@@ -13,13 +13,59 @@ public actor SyncEngine {
     private var pendingEvents: [Event] = []
     private var pollTask: Task<Void, Never>?
 
+    private let snapshotStore: SnapshotStore?
+    private var maxHLC: HLC?
+    private var snapshotDirty = false
+
     /// Called on the main actor whenever the projection changes.
     public var onChange: (@Sendable (Projection) -> Void)?
 
-    public init(repo: SpaceRepository, clock: HLCClock, identity: DeviceIdentity) {
+    public init(repo: SpaceRepository, clock: HLCClock, identity: DeviceIdentity,
+                snapshotStore: SnapshotStore? = nil) {
         self.repo = repo
         self.clock = clock
         self.identity = identity
+        self.snapshotStore = snapshotStore
+    }
+
+    /// Restore the local snapshot cache so the UI paints instantly and sync
+    /// only folds genuinely-new events. A missing/incompatible/corrupt
+    /// snapshot is simply ignored — a full rebuild from the event log is the
+    /// safe fallback and the only correctness path.
+    public func restoreSnapshot() {
+        guard let snap = snapshotStore?.load() else { return }
+        projection = snap.projection
+        knownEventPaths = Set(snap.knownEventPaths)
+        maxHLC = snap.maxHLC
+        if let h = snap.maxHLC { clock.receive(h) }   // never let the clock regress
+        emit()
+    }
+
+    /// Persist the current projection as a local cache. No-op if nothing
+    /// changed since the last write. Never touches the shared Space.
+    public func persistSnapshot() {
+        guard let store = snapshotStore, snapshotDirty else { return }
+        store.save(ProjectionSnapshot(knownEventPaths: Array(knownEventPaths),
+                                      maxHLC: maxHLC, projection: projection))
+        snapshotDirty = false
+    }
+
+    private func bumpMaxHLC(_ h: HLC) {
+        if let m = maxHLC { if h > m { maxHLC = h } } else { maxHLC = h }
+    }
+
+    private static func basename(_ path: String) -> String {
+        (path as NSString).lastPathComponent
+    }
+
+    /// True if the last windowed `sync` left older events unfetched — the UI
+    /// can show a "load earlier" affordance; polling also keeps backfilling.
+    public private(set) var hasUnsyncedHistory = false
+
+    /// Fetch the next older window now (e.g. user scrolled to the bottom).
+    @discardableResult
+    public func loadOlder(_ batch: Int = 500) async -> Bool {
+        await sync(maxNewEvents: batch)
     }
 
     public func setOnChange(_ handler: @escaping @Sendable (Projection) -> Void) {
@@ -50,8 +96,10 @@ public actor SyncEngine {
     /// Apply locally for instant UI, queue for durable publish.
     public func submit(_ event: Event) {
         var p = projection
-        MergeReducer.reduce(&p, events: [event])
+        MergeReducer.reduceTrusted(&p, events: [event])   // just signed locally
         projection = p
+        bumpMaxHLC(event.hlc)
+        snapshotDirty = true
         pendingEvents.append(event)
         emit()
         Task { await self.flush() }
@@ -72,17 +120,35 @@ public actor SyncEngine {
 
     // MARK: - Pull / merge
 
+    /// Pull & fold remote events.
+    ///
+    /// `maxNewEvents` bounds how many of the not-yet-folded event files are
+    /// fetched **this round**, newest-first (event filenames are HLC-prefixed,
+    /// so the basename sorts by time). A new member joining a 10k-topic Space
+    /// gets the recent topics immediately instead of blocking on the entire
+    /// log; the remaining older events backfill over subsequent rounds
+    /// (polling) without ever doing one catastrophic download. Unbounded when
+    /// `nil` (legacy behavior). Order-independent: the reducer derives topic
+    /// aggregates from the reply bucket, so older create events folded after
+    /// their newer replies still converge.
     @discardableResult
-    public func sync() async -> Bool {
+    public func sync(maxNewEvents: Int? = nil) async -> Bool {
         await flush()
         guard let paths = try? await repo.listEventPaths() else { return false }
-        let fresh = paths.filter { !knownEventPaths.contains($0) }
+        var fresh = paths.filter { !knownEventPaths.contains($0) }
+        let totalFresh = fresh.count
+        if let cap = maxNewEvents, fresh.count > cap {
+            fresh.sort { Self.basename($0) > Self.basename($1) }   // newest first
+            fresh = Array(fresh.prefix(cap))
+        }
+        hasUnsyncedHistory = totalFresh > fresh.count
 
         var loaded: [Event] = []
         for path in fresh {
             if let e = try? await repo.loadEvent(at: path), e.isAuthentic() {
                 loaded.append(e)
                 clock.receive(e.hlc)
+                bumpMaxHLC(e.hlc)
             }
             knownEventPaths.insert(path)
         }
@@ -90,7 +156,8 @@ public actor SyncEngine {
         var p = projection
         var changed = false
         if !loaded.isEmpty {
-            MergeReducer.reduce(&p, events: loaded)
+            // Already verified above (e.isAuthentic() gate) — don't re-verify.
+            MergeReducer.reduceTrusted(&p, events: loaded)
             changed = true
         }
         // Profiles always refresh — the per-author file is the trust boundary,
@@ -104,25 +171,36 @@ public actor SyncEngine {
                 if p.profiles[id] != before { changed = true }
             }
         }
-        guard changed else { return false }
+        // knownEventPaths grew even when no authentic events loaded — persist
+        // so the next cold start doesn't re-walk/re-read those files.
+        if !fresh.isEmpty { snapshotDirty = true }
+        guard changed else {
+            persistSnapshot()
+            return false
+        }
         projection = p
+        snapshotDirty = true
+        persistSnapshot()
         emit()
         return true
     }
 
     // MARK: - Polling
 
-    public func startPolling(interval: TimeInterval = 15) {
+    public func startPolling(interval: TimeInterval = 15, window: Int? = 500) {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.sync()
+                await self?.sync(maxNewEvents: window)
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             }
         }
     }
 
-    public func stopPolling() { pollTask?.cancel(); pollTask = nil }
+    public func stopPolling() {
+        pollTask?.cancel(); pollTask = nil
+        persistSnapshot()
+    }
 
     private func emit() {
         let snapshot = projection

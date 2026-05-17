@@ -3,6 +3,7 @@ import SwiftUI
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
     @State private var name = ""
+    @State private var showImport = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -38,9 +39,22 @@ struct OnboardingView: View {
                     .foregroundStyle(.white)
             }
             .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button("已有身份？从其他设备导入") { showImport = true }
+                .font(.subheadline)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 12)
+
+            if !model.accounts.isEmpty {
+                Button("返回选择已有身份") { model.stage = .accountPicker }
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+            }
         }
         .padding(28)
         .frame(maxWidth: 520)
         .background(Color.platformGrouped)
+        .sheet(isPresented: $showImport) { IdentitySettingsView() }
     }
 }

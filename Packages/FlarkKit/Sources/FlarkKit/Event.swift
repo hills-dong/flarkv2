@@ -8,12 +8,16 @@ public enum TargetType: String, Codable, Sendable { case topic, reply }
 public struct Event: Codable, Equatable, Sendable {
     public enum Payload: Codable, Equatable, Sendable {
         case topicCreate(topicID: String, title: String, body: ContentDocument)
+        /// Delete a topic. Honored by the reducer only when the deleting author
+        /// is the topic's author; the UI further restricts this to topics with
+        /// no interactions (no replies, no reactions).
+        case topicDelete(topicID: String)
         case replyCreate(replyID: String, topicID: String, body: ContentDocument)
         /// Set (add/remove unified) — one author toggling one emoji on one target.
         case reactionSet(targetID: String, targetType: TargetType, emojiID: String, removed: Bool)
         case profileUpdate(displayName: String, avatarBlobID: String?)
 
-        private enum Kind: String, Codable { case topicCreate, replyCreate, reactionSet, profileUpdate }
+        private enum Kind: String, Codable { case topicCreate, topicDelete, replyCreate, reactionSet, profileUpdate }
         private enum K: String, CodingKey {
             case kind, topicID, replyID, title, body, targetID, targetType, emojiID, removed, displayName, avatarBlobID
         }
@@ -25,6 +29,8 @@ public struct Event: Codable, Equatable, Sendable {
                 self = .topicCreate(topicID: try c.decode(String.self, forKey: .topicID),
                                     title: try c.decode(String.self, forKey: .title),
                                     body: try c.decode(ContentDocument.self, forKey: .body))
+            case .topicDelete:
+                self = .topicDelete(topicID: try c.decode(String.self, forKey: .topicID))
             case .replyCreate:
                 self = .replyCreate(replyID: try c.decode(String.self, forKey: .replyID),
                                     topicID: try c.decode(String.self, forKey: .topicID),
@@ -48,6 +54,9 @@ public struct Event: Codable, Equatable, Sendable {
                 try c.encode(id, forKey: .topicID)
                 try c.encode(title, forKey: .title)
                 try c.encode(body, forKey: .body)
+            case .topicDelete(let id):
+                try c.encode(Kind.topicDelete, forKey: .kind)
+                try c.encode(id, forKey: .topicID)
             case .replyCreate(let rid, let tid, let body):
                 try c.encode(Kind.replyCreate, forKey: .kind)
                 try c.encode(rid, forKey: .replyID)

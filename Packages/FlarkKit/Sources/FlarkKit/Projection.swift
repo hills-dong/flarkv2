@@ -4,7 +4,7 @@ import Foundation
 /// Deterministic: applying the same set of events in any order yields the
 /// same Projection (the reducer sorts by total order).
 
-public struct TopicState: Identifiable, Equatable, Sendable {
+public struct TopicState: Identifiable, Equatable, Sendable, Codable {
     public let id: String
     public var authorID: String
     public var title: String
@@ -14,7 +14,27 @@ public struct TopicState: Identifiable, Equatable, Sendable {
     public var lastActivity: Int64
 }
 
-public struct ReplyState: Identifiable, Equatable, Sendable {
+/// Lightweight row for the topic list — excludes the heavy `ContentDocument`
+/// body so the list array is cheap to build, copy and diff at 10k+ topics.
+/// `preview` is a truncated plain-text rendering of the body.
+public struct TopicRow: Identifiable, Equatable, Sendable, Codable {
+    public let id: String
+    public let authorID: String
+    public let title: String
+    public let preview: String
+    public let createdAt: Int64
+    public let replyCount: Int
+    public let lastActivity: Int64
+
+    static func make(from t: TopicState) -> TopicRow {
+        TopicRow(id: t.id, authorID: t.authorID, title: t.title,
+                 preview: String(t.body.plainText.prefix(200)),
+                 createdAt: t.createdAt, replyCount: t.replyCount,
+                 lastActivity: t.lastActivity)
+    }
+}
+
+public struct ReplyState: Identifiable, Equatable, Sendable, Codable {
     public let id: String
     public var topicID: String
     public var authorID: String
@@ -28,14 +48,15 @@ public struct ReactionKey: Hashable, Sendable {
     public let emojiID: String
 }
 
-struct ReactionState: Sendable {
+struct ReactionState: Sendable, Codable {
     var removed: Bool
     var hlc: HLC          // last-writer-wins guard
     var targetID: String
     var emojiID: String
+    var authorID: String  // kept so the ReactionKey is rebuildable from a snapshot
 }
 
-public struct ProfileState: Equatable, Sendable {
+public struct ProfileState: Equatable, Sendable, Codable {
     public var displayName: String
     public var avatarBlobID: String?
     var hlc: HLC
@@ -57,16 +78,89 @@ public struct Projection: Sendable {
     /// Event ids already folded in — makes apply idempotent.
     public private(set) var appliedEventIDs: Set<String> = []
 
+    // Incrementally-maintained indices (pure functions of the applied event
+    // set → still order-independent and snapshot-friendly). They turn the
+    // per-render O(n log n) sort + heavy deep-copy into an O(n) lookup.
+    private var topicRowsMap: [String: TopicRow] = [:]
+    /// Topic ids ordered by recency: lastActivity desc, id asc tie-break.
+    private var topicOrder: [String] = []
+    /// reply ids per topic, kept ordered by (createdAt, id).
+    private var replyIDsByTopic: [String: [String]] = [:]
+
     public init() {}
 
+    /// Recency-ordered lightweight rows for the list. No sort, no body copy.
+    public var topicRowsByRecency: [TopicRow] {
+        topicOrder.compactMap { topicRowsMap[$0] }
+    }
+
     public var topicsByRecency: [TopicState] {
-        topics.values.sorted { $0.lastActivity > $1.lastActivity }
+        topicOrder.compactMap { topics[$0] }
     }
 
     public func replies(forTopic topicID: String) -> [ReplyState] {
-        replies.values
-            .filter { $0.topicID == topicID }
-            .sorted { $0.createdAt < $1.createdAt }
+        (replyIDsByTopic[topicID] ?? []).compactMap { replies[$0] }
+    }
+
+    // MARK: - Index maintenance
+
+    private static func rowOrdered(_ a: TopicRow, before b: TopicRow) -> Bool {
+        if a.lastActivity != b.lastActivity { return a.lastActivity > b.lastActivity }
+        return a.id < b.id
+    }
+
+    private mutating func setRow(_ row: TopicRow) {
+        if topicRowsMap[row.id] != nil { removeRowFromOrder(row.id) }
+        topicRowsMap[row.id] = row
+        var lo = 0, hi = topicOrder.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if let m = topicRowsMap[topicOrder[mid]], Self.rowOrdered(m, before: row) {
+                lo = mid + 1
+            } else {
+                hi = mid
+            }
+        }
+        topicOrder.insert(row.id, at: lo)
+    }
+
+    private mutating func removeRowFromOrder(_ id: String) {
+        if let i = topicOrder.firstIndex(of: id) { topicOrder.remove(at: i) }
+    }
+
+    private mutating func removeTopicIndex(_ id: String) {
+        topicRowsMap.removeValue(forKey: id)
+        removeRowFromOrder(id)
+        replyIDsByTopic.removeValue(forKey: id)
+    }
+
+    private mutating func indexReply(_ reply: ReplyState) {
+        var ids = replyIDsByTopic[reply.topicID] ?? []
+        var lo = 0, hi = ids.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            let m = replies[ids[mid]]
+            let before = m.map { $0.createdAt < reply.createdAt
+                || ($0.createdAt == reply.createdAt && $0.id < reply.id) } ?? true
+            if before { lo = mid + 1 } else { hi = mid }
+        }
+        ids.insert(reply.id, at: lo)
+        replyIDsByTopic[reply.topicID] = ids
+    }
+
+    /// Recompute a topic's reply-derived aggregates from the bucket and
+    /// refresh its row. Deriving (not incrementing) keeps the fold correct
+    /// even when a topic's create event is folded AFTER its replies — which
+    /// happens with windowed newest-first loading (PR5).
+    private mutating func refreshTopic(_ id: String) {
+        guard var t = topics[id] else { return }
+        let bucket = replyIDsByTopic[id] ?? []
+        t.replyCount = bucket.count
+        var last = t.createdAt
+        for rid in bucket { if let r = replies[rid] { last = max(last, r.createdAt) } }
+        t.lastActivity = last
+        topics[id] = t
+        setRow(.make(from: t))
     }
 
     public func displayName(_ authorID: String) -> String {
@@ -113,18 +207,34 @@ public struct Projection: Sendable {
                     id: topicID, authorID: event.authorID, title: title, body: body,
                     createdAt: event.hlc.wallMillis, replyCount: 0,
                     lastActivity: event.hlc.wallMillis)
+                // Replies may already be folded (windowed newest-first) — derive.
+                refreshTopic(topicID)
+            }
+
+        case .topicDelete(let topicID):
+            // Only the topic's own author may delete it. The UI additionally
+            // restricts this to topics with no interactions; here we still
+            // sweep any replies/reactions defensively in case a reply event
+            // is totally-ordered after the delete.
+            if let t = topics[topicID], t.authorID == event.authorID {
+                topics.removeValue(forKey: topicID)
+                for rid in replies.filter({ $0.value.topicID == topicID }).map(\.key) {
+                    replies.removeValue(forKey: rid)
+                }
+                for k in reactions.filter({ $0.value.targetID == topicID }).map(\.key) {
+                    reactions.removeValue(forKey: k)
+                }
+                removeTopicIndex(topicID)
             }
 
         case .replyCreate(let replyID, let topicID, let body):
             if replies[replyID] == nil {
-                replies[replyID] = ReplyState(
+                let r = ReplyState(
                     id: replyID, topicID: topicID, authorID: event.authorID,
                     body: body, createdAt: event.hlc.wallMillis)
-                if var t = topics[topicID] {
-                    t.replyCount += 1
-                    t.lastActivity = max(t.lastActivity, event.hlc.wallMillis)
-                    topics[topicID] = t
-                }
+                replies[replyID] = r
+                indexReply(r)
+                refreshTopic(topicID)   // no-op if the topic isn't folded yet
             }
 
         case .reactionSet(let targetID, _, let emojiID, let removed):
@@ -133,7 +243,8 @@ public struct Projection: Sendable {
                 break // older than what we have — LWW keeps newer
             }
             reactions[key] = ReactionState(removed: removed, hlc: event.hlc,
-                                           targetID: targetID, emojiID: emojiID)
+                                           targetID: targetID, emojiID: emojiID,
+                                           authorID: event.authorID)
 
         case .profileUpdate(let name, let avatar):
             if let existing = profiles[event.authorID], !(event.hlc > existing.hlc) {
@@ -145,12 +256,69 @@ public struct Projection: Sendable {
     }
 }
 
+// MARK: - Snapshot serialization
+
+/// `Projection` is a pure fold of the event log, so it can be cached as a
+/// local snapshot to skip rebuilding from scratch on every launch. Reactions
+/// are stored as an array (the dict key is rebuilt from `ReactionState`); all
+/// other state — including the incrementally-maintained indices — round-trips
+/// directly, so a restored projection equals one freshly built from events.
+extension Projection: Codable {
+    enum CodingKeys: String, CodingKey {
+        case topics, replies, profiles, reactions, appliedEventIDs
+        case topicRowsMap, topicOrder, replyIDsByTopic
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        topics = try c.decode([String: TopicState].self, forKey: .topics)
+        replies = try c.decode([String: ReplyState].self, forKey: .replies)
+        profiles = try c.decode([String: ProfileState].self, forKey: .profiles)
+        appliedEventIDs = try c.decode(Set<String>.self, forKey: .appliedEventIDs)
+        topicRowsMap = try c.decode([String: TopicRow].self, forKey: .topicRowsMap)
+        topicOrder = try c.decode([String].self, forKey: .topicOrder)
+        replyIDsByTopic = try c.decode([String: [String]].self, forKey: .replyIDsByTopic)
+        let states = try c.decode([ReactionState].self, forKey: .reactions)
+        for st in states {
+            reactions[ReactionKey(targetID: st.targetID, authorID: st.authorID,
+                                  emojiID: st.emojiID)] = st
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(topics, forKey: .topics)
+        try c.encode(replies, forKey: .replies)
+        try c.encode(profiles, forKey: .profiles)
+        try c.encode(appliedEventIDs, forKey: .appliedEventIDs)
+        try c.encode(topicRowsMap, forKey: .topicRowsMap)
+        try c.encode(topicOrder, forKey: .topicOrder)
+        try c.encode(replyIDsByTopic, forKey: .replyIDsByTopic)
+        try c.encode(Array(reactions.values), forKey: .reactions)
+    }
+}
+
 public enum MergeReducer {
+    /// Bumped whenever reducer semantics or projected state shape change.
+    /// Persisted in a snapshot; a mismatch forces a full rebuild from the
+    /// (immutable, always-authoritative) event log.
+    public static let reducerFingerprint = "v1-rows-buckets"
+
     /// Fold a batch of events into a projection. Unauthentic events are
     /// dropped. Order-independent: events are globally sorted first.
     public static func reduce(_ projection: inout Projection, events: [Event]) {
         let valid = events.filter { $0.isAuthentic() }.sorted(by: Event.order)
         for e in valid { projection.apply(e) }
+    }
+
+    /// Same as `reduce` but skips Ed25519 verification. The caller MUST have
+    /// already verified authenticity — `SyncEngine.sync` verifies on pull and
+    /// local events are signed at creation. Avoids verifying every event
+    /// twice (the dominant cold-start CPU cost at 10k+ events). `apply` stays
+    /// idempotent via `appliedEventIDs`, so re-delivery is still safe.
+    public static func reduceTrusted(_ projection: inout Projection, events: [Event]) {
+        for e in events.sorted(by: Event.order) { projection.apply(e) }
     }
 
     public static func build(from events: [Event]) -> Projection {
