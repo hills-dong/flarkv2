@@ -26,6 +26,8 @@ struct RootView: View {
             ProgressView().controlSize(.large)
         case .onboarding:
             OnboardingView()
+        case .accountPicker:
+            AccountPickerView()
         case .noSpace:
             SpaceSetupView()
         case .ready:

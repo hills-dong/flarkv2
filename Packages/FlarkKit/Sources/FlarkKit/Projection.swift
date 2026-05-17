@@ -115,6 +115,21 @@ public struct Projection: Sendable {
                     lastActivity: event.hlc.wallMillis)
             }
 
+        case .topicDelete(let topicID):
+            // Only the topic's own author may delete it. The UI additionally
+            // restricts this to topics with no interactions; here we still
+            // sweep any replies/reactions defensively in case a reply event
+            // is totally-ordered after the delete.
+            if let t = topics[topicID], t.authorID == event.authorID {
+                topics.removeValue(forKey: topicID)
+                for rid in replies.filter({ $0.value.topicID == topicID }).map(\.key) {
+                    replies.removeValue(forKey: rid)
+                }
+                for k in reactions.filter({ $0.value.targetID == topicID }).map(\.key) {
+                    reactions.removeValue(forKey: k)
+                }
+            }
+
         case .replyCreate(let replyID, let topicID, let body):
             if replies[replyID] == nil {
                 replies[replyID] = ReplyState(

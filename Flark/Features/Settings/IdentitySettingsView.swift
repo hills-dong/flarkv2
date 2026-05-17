@@ -11,6 +11,8 @@ struct IdentitySettingsView: View {
     @State private var importCode = ""
     @State private var importPass = ""
     @State private var message: String?
+    @State private var showLogout = false
+    @State private var showDeleteAccount = false
 
     var body: some View {
         NavigationStack {
@@ -68,6 +70,23 @@ struct IdentitySettingsView: View {
                 } header: { Text("在本设备导入身份 (B)") }
                 footer: { Text("将用恢复码里的身份替换本设备当前身份，并恢复其全部话题群。") }
 
+                if model.hasIdentity {
+                    Section {
+                        Button { showLogout = true } label: {
+                            Label("登出 / 切换身份", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                    } footer: {
+                        Text("登出只是切走当前身份，**不会删除任何数据**——可随时再登录、切换或新增其他身份。")
+                    }
+                    Section {
+                        Button(role: .destructive) { showDeleteAccount = true } label: {
+                            Label("彻底删除此身份", systemImage: "trash")
+                        }
+                    } footer: {
+                        Text("不可恢复：抹除此身份及其全部话题群。因 iCloud 钥匙串同步，你的其他设备也会一并删除。请先导出恢复码。")
+                    }
+                }
+
                 if let message {
                     Text(message).font(.footnote)
                         .foregroundStyle(message.contains("失败") ? .red : .green)
@@ -79,6 +98,25 @@ struct IdentitySettingsView: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
+            }
+            .confirmationDialog("登出当前身份？", isPresented: $showLogout, titleVisibility: .visible) {
+                Button("登出") {
+                    model.logout()
+                    dismiss()
+                }
+                Button("取消", role: .cancel) { }
+            } message: {
+                Text("数据会保留，可随时再登录或切换其他身份。")
+            }
+            .confirmationDialog("彻底删除此身份？", isPresented: $showDeleteAccount,
+                                titleVisibility: .visible) {
+                Button("永久删除", role: .destructive) {
+                    if let id = model.currentAccountID { model.removeAccount(id) }
+                    dismiss()
+                }
+                Button("取消", role: .cancel) { }
+            } message: {
+                Text("不可恢复，且因 iCloud 同步会从你的所有设备删除。没有恢复码将无法找回。")
             }
         }
     }

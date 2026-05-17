@@ -7,6 +7,7 @@ struct TopicListView: View {
     @State private var composing = false
     @State private var showSpaces = false
     @State private var showIdentity = false
+    @State private var pendingDelete: TopicState?
 
     var body: some View {
         let topics = model.projection.topicsByRecency
@@ -23,6 +24,15 @@ struct TopicListView: View {
                                 .listRowSeparator(.hidden)
                                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                                 .listRowBackground(Color.clear)
+                                .swipeActions(edge: .trailing) {
+                                    if model.canDeleteTopic(topic) {
+                                        Button(role: .destructive) {
+                                            pendingDelete = topic
+                                        } label: {
+                                            Label("删除", systemImage: "trash")
+                                        }
+                                    }
+                                }
                         }
                     }
                     .listStyle(.plain)
@@ -49,6 +59,19 @@ struct TopicListView: View {
         .sheet(isPresented: $composing) { ComposerView(mode: .topic) }
         .sheet(isPresented: $showSpaces) { SpaceListView() }
         .sheet(isPresented: $showIdentity) { IdentitySettingsView() }
+        .confirmationDialog("删除话题",
+                            isPresented: Binding(get: { pendingDelete != nil },
+                                                 set: { if !$0 { pendingDelete = nil } }),
+                            presenting: pendingDelete) { topic in
+            Button("删除话题", role: .destructive) {
+                if selection == topic.id { selection = nil }
+                model.deleteTopic(topic.id)
+                pendingDelete = nil
+            }
+            Button("取消", role: .cancel) { pendingDelete = nil }
+        } message: { _ in
+            Text("删除后无法恢复。仅可删除没有任何互动的话题。")
+        }
     }
 }
 
@@ -72,7 +95,7 @@ struct TopicCard: View {
             if !topic.title.isEmpty {
                 Text(topic.title).font(.headline)
             }
-            ContentDocumentView(doc: topic.body)
+            ContentDocumentView(doc: topic.body, imagesZoomable: false)
                 .lineLimit(4)
             ReactionBar(targetID: topic.id, targetType: .topic)
             HStack(spacing: 6) {

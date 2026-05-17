@@ -8,13 +8,17 @@ import FlarkKit
 @MainActor
 @Observable
 final class AppModel {
-    enum Stage { case loading, onboarding, noSpace, ready }
+    enum Stage { case loading, onboarding, accountPicker, noSpace, ready }
 
     var stage: Stage = .loading
     var displayName: String = ""
     var spaces: [SpaceConfig] = []
     var currentSpace: SpaceConfig?
     var projection = Projection()
+
+    /// All local accounts (multi-user). `currentAccountID` is the active one.
+    var accounts: [AccountRef] = []
+    private(set) var currentAccountID: String?
 
     let emoji = EmojiCatalog.load(
         manifestURL: Bundle.main.url(forResource: "manifest", withExtension: "json", subdirectory: "Emoji")
@@ -25,69 +29,135 @@ final class AppModel {
     private var engine: SyncEngine?
     private var repo: SpaceRepository?
 
-    private let nameKey = "flark.displayName"
-    private let keyAccount = "device.ed25519.private"
-    private let nameAccount = "device.displayName"
+    // Legacy single-identity accounts (pre multi-user) — migrated on first run.
+    private let legacyKey = "device.ed25519.private"
+    private let legacyName = "device.displayName"
+    private let legacySpaces = "flark.spaces.v1"
 
     var authorID: String { identity?.authorID ?? "" }
+
+    private func spacePwAccount(_ spaceID: String) -> String {
+        AccountStore.spacePassword(currentAccountID ?? "", spaceID)
+    }
 
     // MARK: - Bootstrap
 
     func bootstrap() {
-        spaces = SpaceStore.load()
-        if let keyData = Keychain.get(keyAccount),
-           let pk = try? Curve25519.Signing.PrivateKey(rawRepresentation: keyData) {
-            identity = DeviceIdentity(privateKey: pk)
-            // Name lives in Keychain alongside the key (UserDefaults is wiped
-            // on uninstall while the Keychain survives, which would orphan it).
-            displayName = Keychain.getString(nameAccount)
-                ?? UserDefaults.standard.string(forKey: nameKey) ?? ""
-            if displayName.isEmpty {
-                stage = .onboarding          // identity exists but name lost — re-ask
-            } else if let first = spaces.first {
-                Task { await openSpace(first) }
-            } else {
-                stage = .noSpace
-            }
+        migrateLegacyIfNeeded()
+        accounts = AccountStore.accounts()
+
+        if let cur = AccountStore.currentID, accounts.contains(where: { $0.id == cur }),
+           loadAccount(cur) {
+            if let first = spaces.first { Task { await openSpace(first) } }
+            else { stage = .noSpace }
+        } else if !accounts.isEmpty {
+            stage = .accountPicker          // pick / add a user (no data destroyed)
         } else {
-            stage = .onboarding
+            stage = .onboarding             // no accounts yet → create the first
         }
     }
 
-    // MARK: - Identity
-
-    func createIdentity(name: String) {
-        // Reuse the existing device key if one survived (e.g. after a
-        // reinstall) so the author id — and thus past content — stays ours.
-        let id: DeviceIdentity
-        if let keyData = Keychain.get(keyAccount),
-           let pk = try? Curve25519.Signing.PrivateKey(rawRepresentation: keyData) {
-            id = DeviceIdentity(privateKey: pk)
-        } else {
-            id = DeviceIdentity.generate()
-            Keychain.set(id.privateKey.rawRepresentation, account: keyAccount, sync: true)
+    /// One-time import of a pre-multi-user identity into the account model.
+    private func migrateLegacyIfNeeded() {
+        guard AccountStore.accounts().isEmpty,
+              let keyData = Keychain.get(legacyKey),
+              let pk = try? Curve25519.Signing.PrivateKey(rawRepresentation: keyData) else { return }
+        let did = DeviceIdentity(privateKey: pk)
+        let id = did.authorID
+        let name = Keychain.getString(legacyName)
+            ?? UserDefaults.standard.string(forKey: "flark.displayName") ?? "我"
+        Keychain.set(keyData, account: AccountStore.keyAccount(id), sync: true)
+        Keychain.setString(name, account: AccountStore.nameAccount(id), sync: true)
+        if let old = Keychain.get(legacySpaces),
+           let list = try? JSONDecoder().decode([SpaceConfig].self, from: old) {
+            SpaceStore.save(list, account: id)
+            for s in list where s.kind == .webdav {
+                if let pw = Keychain.getString("space.\(s.id).password") {
+                    Keychain.setString(pw, account: AccountStore.spacePassword(id, s.id), sync: true)
+                }
+            }
         }
-        identity = id
+        AccountStore.upsert(id: id, name: name)
+        AccountStore.currentID = id
+    }
+
+    @discardableResult
+    private func loadAccount(_ id: String) -> Bool {
+        guard let keyData = Keychain.get(AccountStore.keyAccount(id)),
+              let pk = try? Curve25519.Signing.PrivateKey(rawRepresentation: keyData) else { return false }
+        identity = DeviceIdentity(privateKey: pk)
+        displayName = Keychain.getString(AccountStore.nameAccount(id)) ?? ""
+        currentAccountID = id
+        AccountStore.currentID = id
+        spaces = SpaceStore.load(account: id)
+        return true
+    }
+
+    // MARK: - Identity / accounts
+
+    /// Create a brand-new identity as a new local account and switch to it.
+    func createIdentity(name: String) {
+        let did = DeviceIdentity.generate()
+        let id = did.authorID
+        Keychain.set(did.privateKey.rawRepresentation, account: AccountStore.keyAccount(id), sync: true)
+        Keychain.setString(name, account: AccountStore.nameAccount(id), sync: true)
+        AccountStore.upsert(id: id, name: name)
+        AccountStore.currentID = id
+        identity = did
         displayName = name
-        Keychain.setString(name, account: nameAccount, sync: true)
-        UserDefaults.standard.set(name, forKey: nameKey)
-        if let first = spaces.first { Task { await openSpace(first) } }
-        else { stage = .noSpace }
+        currentAccountID = id
+        spaces = []
+        accounts = AccountStore.accounts()
+        currentSpace = nil
+        projection = Projection()
+        stage = .noSpace
+    }
+
+    /// Switch to another local account (data preserved for all accounts).
+    func switchAccount(_ id: String) {
+        Task {
+            await engine?.stopPolling()
+            engine = nil; repo = nil; clock = nil
+            projection = Projection()
+            currentSpace = nil
+            guard loadAccount(id) else { stage = .accountPicker; return }
+            if let first = spaces.first { await openSpace(first) }
+            else { stage = .noSpace }
+        }
+    }
+
+    /// Explicit, destructive: erase one account's identity + Spaces on this
+    /// device (and, being iCloud-synced, other devices). Distinct from logout.
+    func removeAccount(_ id: String) {
+        if let list = try? JSONDecoder().decode(
+            [SpaceConfig].self, from: Keychain.get(AccountStore.spacesAccount(id)) ?? Data()) {
+            for s in list { Keychain.delete(AccountStore.spacePassword(id, s.id)) }
+        }
+        Keychain.delete(AccountStore.keyAccount(id))
+        Keychain.delete(AccountStore.nameAccount(id))
+        Keychain.delete(AccountStore.spacesAccount(id))
+        AccountStore.remove(id: id)
+        accounts = AccountStore.accounts()
+        if currentAccountID == id { logout() }
     }
 
     // MARK: - Spaces
 
+    private func persistSpaces() {
+        if let acct = currentAccountID { SpaceStore.save(spaces, account: acct) }
+    }
+
     func addLocalSpace(name: String) {
         let cfg = SpaceConfig(id: UUID().uuidString, name: name, kind: .local)
-        spaces.append(cfg); SpaceStore.save(spaces)
+        spaces.append(cfg); persistSpaces()
         Task { await openSpace(cfg) }
     }
 
     func addWebDAVSpace(name: String, url: String, user: String, password: String) {
         let cfg = SpaceConfig(id: UUID().uuidString, name: name, kind: .webdav,
                               webdavURL: url, webdavUser: user)
-        Keychain.setString(password, account: cfg.passwordAccount, sync: true)
-        spaces.append(cfg); SpaceStore.save(spaces)
+        Keychain.setString(password, account: spacePwAccount(cfg.id), sync: true)
+        spaces.append(cfg); persistSpaces()
         Task { await openSpace(cfg) }
     }
 
@@ -99,7 +169,7 @@ final class AppModel {
             backend = LocalFileBackend(root: SpaceStore.localRoot(for: cfg.id))
         case .webdav:
             guard let u = URL(string: cfg.webdavURL ?? "") else { return }
-            let pw = Keychain.getString(cfg.passwordAccount) ?? ""
+            let pw = Keychain.getString(spacePwAccount(cfg.id)) ?? ""
             backend = WebDAVBackend(baseURL: u, username: cfg.webdavUser ?? "", password: pw)
         }
         let clock = HLCClock(nodeID: identity.authorID)
@@ -146,6 +216,18 @@ final class AppModel {
         emit(.topicCreate(topicID: UUID().uuidString, title: title, body: body))
     }
 
+    /// A topic can be deleted only by its own author and only while it has
+    /// had no interaction at all (no replies, no reactions).
+    func canDeleteTopic(_ topic: TopicState) -> Bool {
+        topic.authorID == authorID
+            && topic.replyCount == 0
+            && projection.tallies(forTarget: topic.id).isEmpty
+    }
+
+    func deleteTopic(_ topicID: String) {
+        emit(.topicDelete(topicID: topicID))
+    }
+
     func createReply(topicID: String, body: ContentDocument) {
         emit(.replyCreate(replyID: UUID().uuidString, topicID: topicID, body: body))
     }
@@ -177,6 +259,25 @@ final class AppModel {
     var authorIDShort: String { String(authorID.prefix(10)) }
     var hasIdentity: Bool { identity != nil }
 
+    // MARK: - Logout
+
+    /// Non-destructive: just deactivate the current account on this device.
+    /// All accounts' identities & Spaces are kept (in the iCloud Keychain),
+    /// so you can switch back, sign in again, or add another user.
+    func logout() {
+        Task { await engine?.stopPolling() }
+        engine = nil; repo = nil; clock = nil
+        AccountStore.currentID = nil
+        currentAccountID = nil
+        identity = nil
+        displayName = ""
+        spaces = []
+        currentSpace = nil
+        projection = Projection()
+        accounts = AccountStore.accounts()
+        stage = accounts.isEmpty ? .onboarding : .accountPicker
+    }
+
     // MARK: - Identity export / import (B)
 
     /// Build a passphrase-encrypted recovery code carrying key + name + Spaces.
@@ -184,7 +285,7 @@ final class AppModel {
         guard let identity, !passphrase.isEmpty else { return nil }
         var pw: [String: String] = [:]
         for s in spaces where s.kind == .webdav {
-            pw[s.id] = Keychain.getString(s.passwordAccount) ?? ""
+            pw[s.id] = Keychain.getString(spacePwAccount(s.id)) ?? ""
         }
         let portable = PortableIdentity(
             key: identity.privateKey.rawRepresentation.base64EncodedString(),
@@ -201,23 +302,28 @@ final class AppModel {
               let pk = try? Curve25519.Signing.PrivateKey(rawRepresentation: keyData)
         else { return false }
 
-        identity = DeviceIdentity(privateKey: pk)
+        let did = DeviceIdentity(privateKey: pk)
+        let acctID = did.authorID        // account id == imported identity's author id
+        identity = did
         displayName = p.name
-        Keychain.set(keyData, account: keyAccount, sync: true)
-        Keychain.setString(p.name, account: nameAccount, sync: true)
-        UserDefaults.standard.set(p.name, forKey: nameKey)
+        currentAccountID = acctID
+        Keychain.set(keyData, account: AccountStore.keyAccount(acctID), sync: true)
+        Keychain.setString(p.name, account: AccountStore.nameAccount(acctID), sync: true)
+        AccountStore.upsert(id: acctID, name: p.name)
+        AccountStore.currentID = acctID
 
-        for (id, password) in p.passwords {
-            Keychain.setString(password, account: "space.\(id).password", sync: true)
+        for (spaceID, password) in p.passwords {
+            Keychain.setString(password, account: AccountStore.spacePassword(acctID, spaceID), sync: true)
         }
         spaces = p.spaces
-        SpaceStore.save(spaces)
+        SpaceStore.save(spaces, account: acctID)
+        accounts = AccountStore.accounts()
 
         Task {
             await engine?.stopPolling()
             projection = Projection()
             if let first = spaces.first { await openSpace(first) }
-            else { stage = displayName.isEmpty ? .onboarding : .noSpace }
+            else { stage = .noSpace }
         }
         return true
     }

@@ -44,6 +44,13 @@ struct OnboardingView: View {
                 .font(.subheadline)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 12)
+
+            if !model.accounts.isEmpty {
+                Button("返回选择已有身份") { model.stage = .accountPicker }
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+            }
         }
         .padding(28)
         .frame(maxWidth: 520)
