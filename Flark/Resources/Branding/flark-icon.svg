@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EAF3FF"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- enlarge + recenter so the mark fills the icon safe area -->
+  <g transform="translate(512 512) scale(1.32) translate(-512 -496)" stroke-linejoin="round">
+    <!-- lower wing (light blue) -->
+    <path fill="#7FB4F2" d="M 524,560 L 168,610 L 470,694 Z"/>
+
+    <!-- forked tail (light blue), behind body -->
+    <path fill="#9CC6F7" d="M 372,544 L 176,486 L 300,576 L 198,706 L 380,604 Z"/>
+
+    <!-- body + head + beak (royal blue) -->
+    <path fill="#3566D8" d="M 700,430 L 886,336 L 752,470 L 560,690 L 318,566 L 524,506 Z"/>
+
+    <!-- chest facet (navy, depth) -->
+    <path fill="#1E3F95" d="M 560,690 L 752,470 L 614,512 Z"/>
+
+    <!-- raised upper wing (teal) -->
+    <path fill="#1CC29B" d="M 452,214 L 744,452 L 506,520 Z"/>
+    <!-- wing crease facet -->
+    <path fill="#0FA083" d="M 452,214 L 744,452 L 560,366 Z"/>
+
+    <!-- eye -->
+    <circle cx="788" cy="398" r="13" fill="#EAF3FF"/>
+  </g>
+</svg>
