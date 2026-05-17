@@ -62,8 +62,8 @@ public actor SyncEngine {
         pendingEvents = []
         for e in batch {
             do {
-                try await repo.append(e)
-                knownEventPaths.insert("events/\(e.authorID)/\(e.hlc.description)-\(e.eventID).json")
+                let path = try await repo.append(e)
+                knownEventPaths.insert(path)
             } catch {
                 pendingEvents.append(e)   // retry on the next tick
             }

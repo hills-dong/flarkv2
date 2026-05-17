@@ -63,12 +63,24 @@ final class WebDAVLiveTests: XCTestCase {
                                          authorID: zhang.authorID, publicKey: zhang.publicKeyData)
         await engineA.submit(rA); await engineB.submit(rB)
         await engineA.flush(); await engineB.flush()
-        await engineA.sync(); await engineB.sync()
 
+        // WebDAV is eventually consistent — a just-created sibling author dir
+        // may not show up on the very next PROPFIND. Real sync polls; mimic
+        // that here: re-sync until both devices observe both reactions.
+        func fireCount(_ p: Projection) -> Int {
+            p.tallies(forTarget: "t1").first { $0.emojiID == "u_fire" }?.count ?? 0
+        }
+        var converged = false
+        for _ in 0..<15 {
+            await engineA.sync(); await engineB.sync()
+            if await fireCount(engineA.projection) == 2,
+               await fireCount(engineB.projection) == 2 { converged = true; break }
+            try await Task.sleep(nanoseconds: 1_500_000_000)
+        }
         let finalA = await engineA.projection
         let finalB = await engineB.projection
-        XCTAssertEqual(finalA.tallies(forTarget: "t1").first { $0.emojiID == "u_fire" }?.count, 2)
-        XCTAssertEqual(finalA.tallies(forTarget: "t1").first?.count,
-                       finalB.tallies(forTarget: "t1").first?.count) // converged
+        XCTAssertTrue(converged, "did not converge within timeout")
+        XCTAssertEqual(fireCount(finalA), 2)
+        XCTAssertEqual(fireCount(finalB), 2)   // both devices converged
     }
 }
