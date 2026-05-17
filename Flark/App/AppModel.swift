@@ -65,11 +65,11 @@ final class AppModel {
             id = DeviceIdentity(privateKey: pk)
         } else {
             id = DeviceIdentity.generate()
-            Keychain.set(id.privateKey.rawRepresentation, account: keyAccount)
+            Keychain.set(id.privateKey.rawRepresentation, account: keyAccount, sync: true)
         }
         identity = id
         displayName = name
-        Keychain.setString(name, account: nameAccount)
+        Keychain.setString(name, account: nameAccount, sync: true)
         UserDefaults.standard.set(name, forKey: nameKey)
         if let first = spaces.first { Task { await openSpace(first) } }
         else { stage = .noSpace }
@@ -86,7 +86,7 @@ final class AppModel {
     func addWebDAVSpace(name: String, url: String, user: String, password: String) {
         let cfg = SpaceConfig(id: UUID().uuidString, name: name, kind: .webdav,
                               webdavURL: url, webdavUser: user)
-        Keychain.setString(password, account: cfg.passwordAccount)
+        Keychain.setString(password, account: cfg.passwordAccount, sync: true)
         spaces.append(cfg); SpaceStore.save(spaces)
         Task { await openSpace(cfg) }
     }
@@ -172,5 +172,53 @@ final class AppModel {
 
     func displayName(for authorID: String) -> String {
         projection.displayName(authorID)
+    }
+
+    var authorIDShort: String { String(authorID.prefix(10)) }
+    var hasIdentity: Bool { identity != nil }
+
+    // MARK: - Identity export / import (B)
+
+    /// Build a passphrase-encrypted recovery code carrying key + name + Spaces.
+    func exportIdentity(passphrase: String) -> String? {
+        guard let identity, !passphrase.isEmpty else { return nil }
+        var pw: [String: String] = [:]
+        for s in spaces where s.kind == .webdav {
+            pw[s.id] = Keychain.getString(s.passwordAccount) ?? ""
+        }
+        let portable = PortableIdentity(
+            key: identity.privateKey.rawRepresentation.base64EncodedString(),
+            name: displayName, spaces: spaces, passwords: pw)
+        return IdentityKit.export(portable, passphrase: passphrase)
+    }
+
+    /// Restore an identity from a recovery code: become the same author and
+    /// recover all Spaces. Replaces the current device identity.
+    @discardableResult
+    func importIdentity(code: String, passphrase: String) -> Bool {
+        guard let p = IdentityKit.import(code, passphrase: passphrase),
+              let keyData = Data(base64Encoded: p.key),
+              let pk = try? Curve25519.Signing.PrivateKey(rawRepresentation: keyData)
+        else { return false }
+
+        identity = DeviceIdentity(privateKey: pk)
+        displayName = p.name
+        Keychain.set(keyData, account: keyAccount, sync: true)
+        Keychain.setString(p.name, account: nameAccount, sync: true)
+        UserDefaults.standard.set(p.name, forKey: nameKey)
+
+        for (id, password) in p.passwords {
+            Keychain.setString(password, account: "space.\(id).password", sync: true)
+        }
+        spaces = p.spaces
+        SpaceStore.save(spaces)
+
+        Task {
+            await engine?.stopPolling()
+            projection = Projection()
+            if let first = spaces.first { await openSpace(first) }
+            else { stage = displayName.isEmpty ? .onboarding : .noSpace }
+        }
+        return true
     }
 }

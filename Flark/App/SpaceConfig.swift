@@ -19,16 +19,24 @@ enum SpaceStore {
         return base.appendingPathComponent("flark-spaces.json")
     }
 
+    private static let keychainAccount = "flark.spaces.v1"
+
+    /// Prefer the iCloud-synced Keychain copy (so other devices see the same
+    /// Spaces); fall back to the local file when offline / not yet synced.
     static func load() -> [SpaceConfig] {
+        if let data = Keychain.get(keychainAccount),
+           let list = try? JSONDecoder().decode([SpaceConfig].self, from: data), !list.isEmpty {
+            return list
+        }
         guard let data = try? Data(contentsOf: fileURL),
               let list = try? JSONDecoder().decode([SpaceConfig].self, from: data) else { return [] }
         return list
     }
 
     static func save(_ list: [SpaceConfig]) {
-        if let data = try? JSONEncoder().encode(list) {
-            try? data.write(to: fileURL, options: .atomic)
-        }
+        guard let data = try? JSONEncoder().encode(list) else { return }
+        Keychain.set(data, account: keychainAccount, sync: true)   // syncs across devices
+        try? data.write(to: fileURL, options: .atomic)             // offline cache
     }
 
     /// Root directory for a local-backed Space inside the app container.

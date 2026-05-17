@@ -6,6 +6,7 @@ struct TopicListView: View {
     @Binding var selection: String?
     @State private var composing = false
     @State private var showSpaces = false
+    @State private var showIdentity = false
 
     var body: some View {
         let topics = model.projection.topicsByRecency
@@ -41,9 +42,13 @@ struct TopicListView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button { showSpaces = true } label: { Image(systemName: "rectangle.stack") }
             }
+            ToolbarItem(placement: .primaryAction) {
+                Button { showIdentity = true } label: { Image(systemName: "person.crop.circle") }
+            }
         }
         .sheet(isPresented: $composing) { ComposerView(mode: .topic) }
         .sheet(isPresented: $showSpaces) { SpaceListView() }
+        .sheet(isPresented: $showIdentity) { IdentitySettingsView() }
     }
 }
 
