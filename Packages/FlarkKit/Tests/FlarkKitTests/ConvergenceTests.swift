@@ -73,6 +73,84 @@ final class ConvergenceTests: XCTestCase {
         XCTAssertEqual(pA.topics.count, pB.topics.count)
     }
 
+    /// `reduceTrusted` skips verification but must produce the exact same
+    /// projection as `reduce` for authentic input, and stay idempotent.
+    func testReduceTrustedEqualsReduceAndIdempotent() {
+        let id = DeviceIdentity.generate()
+        let clock = HLCClock(nodeID: id.authorID)
+        let e1 = signed(id, clock, .topicCreate(topicID: "t1", title: "A",
+                                                body: ContentDocument(text: "hello")))
+        let e2 = signed(id, clock, .replyCreate(replyID: "r1", topicID: "t1",
+                                                body: ContentDocument(text: "hi")))
+        let e3 = signed(id, clock, .reactionSet(targetID: "t1", targetType: .topic,
+                                                emojiID: "u_thumbsup", removed: false))
+
+        var pVerified = Projection()
+        MergeReducer.reduce(&pVerified, events: [e1, e2, e3])
+
+        var pTrusted = Projection()
+        MergeReducer.reduceTrusted(&pTrusted, events: [e1, e2, e3])
+        MergeReducer.reduceTrusted(&pTrusted, events: [e1, e2, e3])   // re-delivery
+
+        XCTAssertEqual(pTrusted.topics, pVerified.topics)
+        XCTAssertEqual(pTrusted.topicRowsByRecency, pVerified.topicRowsByRecency)
+        XCTAssertEqual(pTrusted.replies(forTopic: "t1").map(\.id),
+                       pVerified.replies(forTopic: "t1").map(\.id))
+        XCTAssertEqual(pTrusted.topics["t1"]?.replyCount, 1)
+        XCTAssertEqual(pTrusted.tallies(forTarget: "t1"), pVerified.tallies(forTarget: "t1"))
+    }
+
+    /// The new indices (topicRowsByRecency, reply buckets) must be a pure
+    /// function of the event set — identical regardless of apply order.
+    func testIndicesAreOrderIndependent() {
+        let a = DeviceIdentity.generate()
+        let clock = HLCClock(nodeID: a.authorID, now: { 5_000 })
+        let t1 = signed(a, clock, .topicCreate(topicID: "t1", title: "first",
+                                               body: ContentDocument(text: "x")))
+        let t2 = signed(a, clock, .topicCreate(topicID: "t2", title: "second",
+                                               body: ContentDocument(text: "y")))
+        let r1 = signed(a, clock, .replyCreate(replyID: "r1", topicID: "t1",
+                                               body: ContentDocument(text: "a")))
+        let r2 = signed(a, clock, .replyCreate(replyID: "r2", topicID: "t1",
+                                               body: ContentDocument(text: "b")))
+        let r3 = signed(a, clock, .replyCreate(replyID: "r3", topicID: "t2",
+                                               body: ContentDocument(text: "c")))
+
+        let fwd = MergeReducer.build(from: [t1, t2, r1, r2, r3])
+        let rev = MergeReducer.build(from: [r3, r2, r1, t2, t1])
+        let shuf = MergeReducer.build(from: [r2, t2, r3, t1, r1])
+
+        for p in [fwd, rev, shuf] {
+            // t1 last reply r2 → t1 most recent; ordering deterministic.
+            XCTAssertEqual(p.topicRowsByRecency.map(\.id), fwd.topicRowsByRecency.map(\.id))
+            XCTAssertEqual(p.replies(forTopic: "t1").map(\.id), ["r1", "r2"])
+            XCTAssertEqual(p.replies(forTopic: "t2").map(\.id), ["r3"])
+            XCTAssertEqual(p.topics["t1"]?.replyCount, 2)
+            XCTAssertEqual(p.topics["t2"]?.replyCount, 1)
+        }
+    }
+
+    /// PR5 windowing folds newer replies BEFORE the older topic-create. The
+    /// reducer derives aggregates from the bucket, so it must still converge.
+    func testRepliesFoldedBeforeTopicStillConverge() {
+        let a = DeviceIdentity.generate()
+        let clock = HLCClock(nodeID: a.authorID)
+        let topic = signed(a, clock, .topicCreate(topicID: "t1", title: "T",
+                                                  body: ContentDocument(text: "x")))
+        let rep1 = signed(a, clock, .replyCreate(replyID: "r1", topicID: "t1",
+                                                 body: ContentDocument(text: "1")))
+        let rep2 = signed(a, clock, .replyCreate(replyID: "r2", topicID: "t1",
+                                                 body: ContentDocument(text: "2")))
+        // Window 1: only the two (newer) replies. Window 2: the (older) topic.
+        var p = Projection()
+        MergeReducer.reduceTrusted(&p, events: [rep1, rep2])
+        XCTAssertNil(p.topics["t1"])                        // topic not folded yet
+        MergeReducer.reduceTrusted(&p, events: [topic])
+        XCTAssertEqual(p.topics["t1"]?.replyCount, 2)        // derived, not missed
+        XCTAssertEqual(p.replies(forTopic: "t1").map(\.id), ["r1", "r2"])
+        XCTAssertEqual(p.topicRowsByRecency.first?.id, "t1")
+    }
+
     func testIdempotentReapply() {
         let id = DeviceIdentity.generate()
         let clock = HLCClock(nodeID: id.authorID)

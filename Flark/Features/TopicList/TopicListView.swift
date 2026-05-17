@@ -7,10 +7,10 @@ struct TopicListView: View {
     @State private var composing = false
     @State private var showSpaces = false
     @State private var showIdentity = false
-    @State private var pendingDelete: TopicState?
+    @State private var pendingDelete: TopicRow?
 
     var body: some View {
-        let topics = model.projection.topicsByRecency
+        let topics = model.projection.topicRowsByRecency
         ZStack(alignment: .bottomTrailing) {
             Group {
                 if topics.isEmpty {
@@ -25,7 +25,7 @@ struct TopicListView: View {
                                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                                 .listRowBackground(Color.clear)
                                 .swipeActions(edge: .trailing) {
-                                    if model.canDeleteTopic(topic) {
+                                    if model.canDeleteTopic(topic.id) {
                                         Button(role: .destructive) {
                                             pendingDelete = topic
                                         } label: {
@@ -77,7 +77,7 @@ struct TopicListView: View {
 
 struct TopicCard: View {
     @Environment(AppModel.self) private var model
-    let topic: TopicState
+    let topic: TopicRow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -95,8 +95,11 @@ struct TopicCard: View {
             if !topic.title.isEmpty {
                 Text(topic.title).font(.headline)
             }
-            ContentDocumentView(doc: topic.body, imagesZoomable: false)
-                .lineLimit(4)
+            if !topic.preview.isEmpty {
+                Text(topic.preview)
+                    .font(.body)
+                    .lineLimit(4)
+            }
             ReactionBar(targetID: topic.id, targetType: .topic)
             HStack(spacing: 6) {
                 Image(systemName: "bubble.left")

@@ -174,23 +174,36 @@ final class AppModel {
         }
         let clock = HLCClock(nodeID: identity.authorID)
         let repo = SpaceRepository(backend: backend, identity: identity, spaceID: cfg.id)
-        let engine = SyncEngine(repo: repo, clock: clock, identity: identity)
+        let snapshots = SnapshotStore(url: SpaceStore.snapshotURL(for: cfg.id))
+        let engine = SyncEngine(repo: repo, clock: clock, identity: identity,
+                                snapshotStore: snapshots)
         self.clock = clock; self.repo = repo; self.engine = engine
         self.currentSpace = cfg
 
         await engine.setOnChange { [weak self] snap in
             Task { @MainActor in self?.projection = snap }
         }
+        // Paint instantly from the local cache, then fold only new events.
+        await engine.restoreSnapshot()
+        self.projection = await engine.projection
         try? await repo.bootstrap(spaceName: cfg.name)
         if !displayName.isEmpty {                       // never clobber with empty
             try? await repo.writeProfile(displayName: displayName, avatarBlobID: nil)
             await engine.setLocalProfile(authorID: identity.authorID,
                                          displayName: displayName, avatarBlobID: nil)
         }
-        await engine.sync()
+        // Windowed: newest topics first so a new member isn't blocked on the
+        // whole log; polling backfills the rest newest→oldest in the bg.
+        await engine.sync(maxNewEvents: 500)
         await engine.startPolling(interval: cfg.kind == .webdav ? 15 : 3)
         self.projection = await engine.projection
         self.stage = .ready
+    }
+
+    /// Flush the local projection cache (call when the app backgrounds) so the
+    /// next cold start restores instantly instead of re-folding the log.
+    func persistSnapshot() {
+        Task { await engine?.persistSnapshot() }
     }
 
     func switchSpace(_ cfg: SpaceConfig) {
@@ -218,8 +231,9 @@ final class AppModel {
 
     /// A topic can be deleted only by its own author and only while it has
     /// had no interaction at all (no replies, no reactions).
-    func canDeleteTopic(_ topic: TopicState) -> Bool {
-        topic.authorID == authorID
+    func canDeleteTopic(_ topicID: String) -> Bool {
+        guard let topic = projection.topics[topicID] else { return false }
+        return topic.authorID == authorID
             && topic.replyCount == 0
             && projection.tallies(forTarget: topic.id).isEmpty
     }
@@ -239,14 +253,48 @@ final class AppModel {
 
     func uploadImage(_ data: Data) async -> (id: String, w: Int, h: Int)? {
         guard let repo else { return nil }
-        guard let id = try? await repo.putBlob(data) else { return nil }
         #if canImport(UIKit)
-        let img = UIImage(data: data)
-        return (id, Int(img?.size.width ?? 0), Int(img?.size.height ?? 0))
+        // Camera-roll photos are often 2–30 MB (HEIC / PNG screenshots /
+        // ProRAW). In a serverless WebDAV Space every member re-downloads
+        // each blob on poll, so always downscale + re-encode as JPEG before
+        // it enters the (immutable, content-addressed) blob store.
+        let (out, w, h) = Self.compressForUpload(data)
+        guard let id = try? await repo.putBlob(out) else { return nil }
+        return (id, w, h)
         #else
+        guard let id = try? await repo.putBlob(data) else { return nil }
         return (id, 0, 0)
         #endif
     }
+
+    #if canImport(UIKit)
+    /// Downscale to a max long edge and JPEG-encode. Returns the encoded
+    /// bytes and the *output* pixel size (used for layout aspect ratio).
+    /// Falls back to the original bytes if the image can't be decoded.
+    static func compressForUpload(_ data: Data,
+                                  maxEdge: CGFloat = 2048,
+                                  quality: CGFloat = 0.8) -> (Data, Int, Int) {
+        guard let img = UIImage(data: data) else { return (data, 0, 0) }
+        let px = CGSize(width: img.size.width * img.scale,
+                        height: img.size.height * img.scale)
+        let scale = min(1, maxEdge / max(px.width, px.height))
+        let target = CGSize(width: (px.width * scale).rounded(),
+                            height: (px.height * scale).rounded())
+        let fmt = UIGraphicsImageRendererFormat.default()
+        fmt.scale = 1                       // target is already in pixels
+        fmt.opaque = true                   // JPEG has no alpha anyway
+        let resized = UIGraphicsImageRenderer(size: target, format: fmt)
+            .image { _ in img.draw(in: CGRect(origin: .zero, size: target)) }
+        guard let jpeg = resized.jpegData(compressionQuality: quality) else {
+            return (data, Int(px.width), Int(px.height))
+        }
+        // If re-encoding somehow grew it (tiny image), keep the original.
+        if jpeg.count >= data.count, scale == 1 {
+            return (data, Int(px.width), Int(px.height))
+        }
+        return (jpeg, Int(target.width), Int(target.height))
+    }
+    #endif
 
     func loadImage(_ id: String) async -> Data? {
         try? await repo?.getBlob(id)
