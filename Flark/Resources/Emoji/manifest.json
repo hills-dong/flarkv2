@@ -1,0 +1,36 @@
+{
+  "items": [
+    { "id": "u_thumbsup", "unicode": "👍", "category": "most_used", "keywords": ["赞", "good"] },
+    { "id": "u_pray", "unicode": "🙏", "category": "most_used", "keywords": ["谢谢", "拜托"] },
+    { "id": "u_check", "unicode": "✅", "category": "most_used", "keywords": ["完成", "ok"] },
+    { "id": "u_fire", "unicode": "🔥", "category": "most_used", "keywords": ["火", "热"] },
+    { "id": "u_joy", "unicode": "😂", "category": "most_used", "keywords": ["笑", "哈哈"] },
+    { "id": "u_party", "unicode": "🎉", "category": "most_used", "keywords": ["庆祝"] },
+
+    { "id": "u_grin", "unicode": "😀", "category": "default", "keywords": ["开心"] },
+    { "id": "u_smile", "unicode": "😊", "category": "default", "keywords": ["微笑"] },
+    { "id": "u_sweat", "unicode": "😅", "category": "default", "keywords": ["尴尬"] },
+    { "id": "u_handshake", "unicode": "🤝", "category": "default", "keywords": ["合作"] },
+    { "id": "u_eyes", "unicode": "👀", "category": "default", "keywords": ["关注"] },
+    { "id": "u_bulb", "unicode": "💡", "category": "default", "keywords": ["想法"] },
+    { "id": "u_rocket", "unicode": "🚀", "category": "default", "keywords": ["上线", "发布"] },
+    { "id": "u_warn", "unicode": "⚠️", "category": "default", "keywords": ["注意"] },
+    { "id": "u_heart", "unicode": "❤️", "category": "default", "keywords": ["爱"] },
+    { "id": "u_cry", "unicode": "😭", "category": "default", "keywords": ["哭"] },
+    { "id": "u_think", "unicode": "🤔", "category": "default", "keywords": ["思考"] },
+    { "id": "u_clap", "unicode": "👏", "category": "default", "keywords": ["鼓掌"] },
+    { "id": "u_raise", "unicode": "🙌", "category": "default", "keywords": ["举手"] },
+    { "id": "u_muscle", "unicode": "💪", "category": "default", "keywords": ["加油"] },
+    { "id": "u_spark", "unicode": "✨", "category": "default", "keywords": ["闪"] },
+    { "id": "u_celebrate", "unicode": "🥳", "category": "default", "keywords": ["开心"] },
+    { "id": "u_cool", "unicode": "😎", "category": "default", "keywords": ["酷"] },
+    { "id": "u_salute", "unicode": "🫡", "category": "default", "keywords": ["收到"] },
+
+    { "id": "lark_ok", "unicode": "🆗", "category": "lark", "keywords": ["OK"] },
+    { "id": "lark_plus1", "unicode": "💯", "category": "lark", "keywords": ["+1"] },
+    { "id": "lark_yes", "unicode": "✔️", "category": "lark", "keywords": ["YES"] },
+    { "id": "lark_done", "unicode": "✅", "category": "lark", "keywords": ["DONE"] },
+    { "id": "lark_no", "unicode": "❌", "category": "lark", "keywords": ["NO"] },
+    { "id": "lark_get", "unicode": "📥", "category": "lark", "keywords": ["GET"] }
+  ]
+}
