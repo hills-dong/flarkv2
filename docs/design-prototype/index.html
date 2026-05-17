@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Flark · 设计原型 (iOS 26)</title>
+<style>
+  :root{
+    --bg:#F2F2F7;            /* iOS grouped background */
+    --bg-elevated:#FFFFFF;
+    --label:#1C1C1E;
+    --label-2:#3C3C43;
+    --label-3:#8E8E93;       /* secondary */
+    --label-4:#C7C7CC;
+    --separator:rgba(60,60,67,0.18);
+    --tint:#007AFF;          /* iOS system blue */
+    --tint-press:#0063CC;
+    --green:#34C759;
+    --red:#FF3B30;
+    --orange:#FF9500;
+    --glass:rgba(255,255,255,0.66);
+    --glass-stroke:rgba(255,255,255,0.7);
+    --radius-card:22px;
+    --radius-ctrl:14px;
+    --shadow-card:0 1px 2px rgba(0,0,0,0.04),0 8px 24px rgba(0,0,0,0.06);
+    --font:-apple-system,"SF Pro Text","SF Pro Display",system-ui,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    font-family:var(--font);
+    background:
+      radial-gradient(1200px 600px at 12% -10%, #DCE7FF 0%, transparent 55%),
+      radial-gradient(1000px 600px at 100% 0%, #FFE6DC 0%, transparent 50%),
+      #E9EAF0;
+    color:var(--label);
+    display:flex; min-height:100%;
+    align-items:flex-start; justify-content:center;
+    gap:32px; padding:40px 24px; flex-wrap:wrap;
+  }
+
+  /* ---------- side rail ---------- */
+  .rail{
+    position:sticky; top:40px; width:230px;
+    background:var(--glass); backdrop-filter:blur(28px) saturate(180%);
+    -webkit-backdrop-filter:blur(28px) saturate(180%);
+    border:1px solid var(--glass-stroke); border-radius:24px;
+    padding:18px; box-shadow:var(--shadow-card);
+  }
+  .rail h1{font-size:19px; letter-spacing:-0.02em; margin-bottom:2px}
+  .rail p{font-size:12px; color:var(--label-3); margin-bottom:14px}
+  .rail button{
+    display:flex; align-items:center; gap:10px; width:100%;
+    background:transparent; border:0; color:var(--label);
+    font:inherit; font-size:14px; padding:10px 12px; border-radius:12px;
+    cursor:pointer; text-align:left;
+  }
+  .rail button .dot{width:8px;height:8px;border-radius:50%;background:var(--label-4);flex:none}
+  .rail button.active{background:rgba(0,122,255,0.12); color:var(--tint); font-weight:600}
+  .rail button.active .dot{background:var(--tint)}
+  .rail .hint{font-size:11px;color:var(--label-3);margin-top:14px;line-height:1.5}
+
+  /* ---------- phone ---------- */
+  .device{
+    width:402px; height:850px; border-radius:56px;
+    background:#000; padding:12px;
+    box-shadow:0 0 0 12px #2b2b30, 0 30px 70px rgba(0,0,0,0.35);
+    position:relative; flex:none;
+  }
+  .screen{
+    position:absolute; inset:12px; border-radius:46px; overflow:hidden;
+    background:var(--bg); display:flex; flex-direction:column;
+  }
+  .dynamic-island{
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    width:124px; height:35px; background:#000; border-radius:20px; z-index:60;
+  }
+  .statusbar{
+    height:54px; flex:none; display:flex; align-items:flex-end;
+    justify-content:space-between; padding:0 28px 8px;
+    font-size:15px; font-weight:600; color:var(--label); z-index:50;
+  }
+  .statusbar .right{display:flex; gap:6px; align-items:center}
+
+  .page{display:none; flex:1; min-height:0; flex-direction:column}
+  .page.show{display:flex}
+  .scroll{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch}
+  .scroll::-webkit-scrollbar{width:0}
+
+  /* nav bars */
+  .nav-large{padding:4px 22px 8px}
+  .nav-large .eyebrow{font-size:13px;color:var(--label-3);font-weight:600}
+  .nav-large h2{font-size:32px; letter-spacing:-0.03em; margin-top:2px}
+  .nav-bar{
+    position:sticky; top:0; z-index:40;
+    display:flex; align-items:center; gap:12px;
+    padding:10px 16px;
+    background:var(--glass); backdrop-filter:blur(24px) saturate(180%);
+    -webkit-backdrop-filter:blur(24px) saturate(180%);
+    border-bottom:0.5px solid var(--separator);
+  }
+  .nav-bar .title{flex:1; text-align:center; font-size:16px; font-weight:600}
+  .iconbtn{
+    width:36px;height:36px;border-radius:50%;border:0;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(120,120,128,0.12); color:var(--tint); font-size:17px;
+  }
+  .iconbtn.plain{background:transparent}
+  .link{background:none;border:0;color:var(--tint);font:inherit;font-size:16px;cursor:pointer}
+
+  /* ---------- onboarding ---------- */
+  .onb{flex:1; display:flex; flex-direction:column; padding:38px 28px 28px; overflow-y:auto}
+  .brand{
+    width:74px;height:74px;border-radius:22px;margin-bottom:22px;
+    background:linear-gradient(150deg,#5AA9FF,#007AFF 60%,#0050C8);
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-size:38px;font-weight:800;box-shadow:0 12px 26px rgba(0,90,200,.35);
+  }
+  .onb h2{font-size:30px;letter-spacing:-0.03em}
+  .onb .sub{color:var(--label-3);font-size:15px;margin-top:8px;line-height:1.5}
+  .avatar-pick{
+    width:96px;height:96px;border-radius:50%;margin:30px auto 6px;
+    background:#E5E5EA;display:flex;align-items:center;justify-content:center;
+    font-size:40px;color:var(--label-3);position:relative;cursor:pointer;
+  }
+  .avatar-pick .cam{
+    position:absolute;right:-2px;bottom:-2px;width:32px;height:32px;border-radius:50%;
+    background:var(--tint);color:#fff;display:flex;align-items:center;justify-content:center;
+    font-size:14px;border:3px solid var(--bg);
+  }
+  .field{margin-top:18px}
+  .field label{font-size:13px;color:var(--label-3);font-weight:600;margin-left:4px}
+  .input{
+    margin-top:7px;width:100%;background:var(--bg-elevated);
+    border:0;border-radius:var(--radius-ctrl);padding:15px 16px;
+    font:inherit;font-size:16px;color:var(--label);
+    box-shadow:inset 0 0 0 0.5px var(--separator);
+  }
+  .seg{
+    display:flex;background:rgba(120,120,128,0.12);border-radius:12px;padding:3px;margin-top:8px;
+  }
+  .seg button{
+    flex:1;border:0;background:transparent;font:inherit;font-size:14px;font-weight:600;
+    padding:9px;border-radius:9px;cursor:pointer;color:var(--label)
+  }
+  .seg button.on{background:#fff;box-shadow:var(--shadow-card)}
+  .help{font-size:12px;color:var(--label-3);margin-top:8px;line-height:1.5;padding:0 4px}
+  .btn-primary{
+    margin-top:auto;width:100%;background:var(--tint);color:#fff;border:0;
+    font:inherit;font-size:17px;font-weight:600;padding:16px;border-radius:16px;cursor:pointer;
+    box-shadow:0 10px 24px rgba(0,122,255,.32);
+  }
+  .btn-primary:active{background:var(--tint-press)}
+  .btn-ghost{
+    width:100%;background:transparent;color:var(--tint);border:0;
+    font:inherit;font-size:15px;padding:14px;cursor:pointer;margin-top:6px;
+  }
+
+  /* ---------- topic list ---------- */
+  .list-wrap{padding:6px 16px 120px}
+  .card{
+    background:var(--bg-elevated);border-radius:var(--radius-card);
+    padding:18px 18px 8px;margin-bottom:16px;box-shadow:var(--shadow-card);
+  }
+  .row{display:flex;align-items:center;gap:10px}
+  .av{width:38px;height:38px;border-radius:50%;flex:none;display:flex;
+      align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px}
+  .av.a{background:#FF8A3D}.av.b{background:#34C759}.av.c{background:#AF52DE}
+  .av.d{background:#FF375F}.av.me{background:linear-gradient(150deg,#5AA9FF,#007AFF)}
+  .who{font-size:15px;font-weight:600}
+  .meta{font-size:12px;color:var(--label-3)}
+  .topic-title{font-size:17px;font-weight:700;letter-spacing:-0.01em;margin:12px 0 6px}
+  .topic-body{font-size:15px;line-height:1.55;color:var(--label-2)}
+  .img-thumb{
+    margin-top:10px;height:140px;border-radius:14px;
+    background:linear-gradient(135deg,#cfe0ff,#ffd9c9);
+    display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:600;
+  }
+  .react-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;
+    background:rgba(0,122,255,0.10);color:var(--tint);
+    border:0;font:inherit;font-size:13px;font-weight:600;
+    padding:6px 11px;border-radius:18px;cursor:pointer;
+  }
+  .chip.off{background:rgba(120,120,128,0.12);color:var(--label-2)}
+  .chip .stk{font-size:14px}
+  .add-react{
+    background:rgba(120,120,128,0.12);color:var(--label-3);
+    width:32px;height:32px;border-radius:50%;border:0;cursor:pointer;font-size:15px;
+  }
+  .actbar{
+    display:flex;justify-content:space-between;
+    border-top:0.5px solid var(--separator);margin-top:14px;padding:6px 4px 2px;
+  }
+  .actbar button{
+    flex:1;background:none;border:0;color:var(--label-3);font:inherit;font-size:13px;
+    display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;cursor:pointer;
+  }
+
+  /* sticker rendering */
+  .stk{display:inline-flex;align-items:center;justify-content:center;vertical-align:-3px}
+  .stk-lark{
+    font-size:12px;font-weight:800;color:#fff;padding:2px 7px;border-radius:8px;
+    background:var(--orange);letter-spacing:.02em;line-height:1.4;
+  }
+  .stk-lark.green{background:var(--green)} .stk-lark.red{background:var(--red)}
+  .stk-lark.blue{background:var(--tint)}
+
+  /* ---------- detail ---------- */
+  .detail-head{background:var(--bg-elevated);padding:18px 18px 16px;margin:6px 16px 0;border-radius:var(--radius-card);box-shadow:var(--shadow-card)}
+  .replies-label{padding:22px 24px 8px;font-size:13px;font-weight:700;color:var(--label-3)}
+  .reply{display:flex;gap:11px;padding:14px 18px}
+  .reply .body{flex:1;min-width:0}
+  .reply .bubble{font-size:15px;line-height:1.55;color:var(--label);margin-top:3px}
+  .reply .sep{height:0.5px;background:var(--separator);margin:0 18px}
+  .input-dock{
+    flex:none;padding:10px 14px 26px;
+    background:var(--glass);backdrop-filter:blur(24px) saturate(180%);
+    -webkit-backdrop-filter:blur(24px) saturate(180%);
+    border-top:0.5px solid var(--separator);
+    display:flex;align-items:center;gap:10px;
+  }
+  .dock-input{
+    flex:1;background:#fff;border:0;border-radius:20px;padding:11px 16px;
+    font:inherit;font-size:15px;color:var(--label-3);box-shadow:inset 0 0 0 0.5px var(--separator);
+    cursor:text;
+  }
+  .dock-ic{width:38px;height:38px;border-radius:50%;border:0;background:rgba(120,120,128,0.14);
+    color:var(--label-2);font-size:18px;cursor:pointer;flex:none}
+  .dock-send{background:var(--tint);color:#fff}
+
+  /* ---------- editor ---------- */
+  .ed-area{
+    flex:1;padding:18px 20px;font-size:17px;line-height:1.6;color:var(--label);overflow-y:auto;
+  }
+  .ed-area .ph{color:var(--label-3)}
+  .ed-preview-label{font-size:12px;font-weight:700;color:var(--label-3);padding:0 20px;margin-top:6px}
+  .ed-preview{
+    margin:8px 16px 0;background:var(--bg-elevated);border-radius:16px;padding:14px 16px;
+    box-shadow:var(--shadow-card);font-size:15px;line-height:1.6;color:var(--label-2);min-height:64px;
+  }
+  .ed-toolbar{
+    flex:none;display:flex;align-items:center;gap:8px;padding:10px 14px 26px;
+    background:var(--glass);backdrop-filter:blur(24px) saturate(180%);
+    -webkit-backdrop-filter:blur(24px) saturate(180%);
+    border-top:0.5px solid var(--separator);
+  }
+  .ed-toolbar .grow{flex:1}
+
+  /* ---------- emoji sheet ---------- */
+  .sheet-mask{
+    position:absolute;inset:0;background:rgba(0,0,0,0.22);z-index:70;
+    display:none;align-items:flex-end;
+  }
+  .sheet-mask.show{display:flex}
+  .sheet{
+    width:100%;background:rgba(248,248,250,0.92);
+    backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);
+    border-radius:26px 26px 0 0;padding:10px 16px 30px;
+    box-shadow:0 -10px 40px rgba(0,0,0,0.18);transform:translateY(0);
+  }
+  .grabber{width:38px;height:5px;border-radius:3px;background:var(--label-4);margin:6px auto 12px}
+  .sheet h3{font-size:13px;font-weight:700;color:var(--label-3);margin:14px 4px 8px}
+  .sheet h3:first-of-type{margin-top:0}
+  .emoji-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+  .emoji-cell{
+    aspect-ratio:1;border:0;background:rgba(255,255,255,0.7);border-radius:14px;
+    display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;
+    box-shadow:0 1px 2px rgba(0,0,0,0.04);
+  }
+  .emoji-cell .stk-lark{font-size:13px}
+  .emoji-cell:active{transform:scale(.94)}
+  .sheet-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+  .sheet-title b{font-size:16px}
+
+  .caption{width:230px;font-size:12px;color:#4a4a55;line-height:1.6;align-self:flex-start;margin-top:6px}
+  .caption b{color:#1c1c1e}
+  @media (max-width:1000px){.rail,.caption{display:none}}
+</style>
+</head>
+<body>
+
+  <nav class="rail">
+    <h1>Flark</h1>
+    <p>设计原型 · iOS 26 · 浅色</p>
+    <button data-go="onboard" class="active"><span class="dot"></span>注册 / 创建身份</button>
+    <button data-go="space"><span class="dot"></span>添加 Space（群）</button>
+    <button data-go="list"><span class="dot"></span>话题列表</button>
+    <button data-go="detail"><span class="dot"></span>话题详情 + 回复</button>
+    <button data-go="editor"><span class="dot"></span>内容编辑器</button>
+    <button data-go="list" id="railEmoji"><span class="dot"></span>表情选择器</button>
+    <p class="hint">右侧为可点击原型。卡片操作、表情、表情面板、发布均可交互。最终以 SwiftUI + 真 Liquid Glass 实现，原型仅定方向。</p>
+  </nav>
+
+  <div class="device">
+    <div class="dynamic-island"></div>
+    <div class="screen">
+      <div class="statusbar">
+        <span>9:41</span>
+        <span class="right" style="font-size:13px;letter-spacing:1px">▬▬▬ &nbsp;🛜&nbsp; 🔋</span>
+      </div>
+
+      <!-- ============ ONBOARD ============ -->
+      <section class="page show" id="page-onboard">
+        <div class="onb">
+          <div class="brand">F</div>
+          <h2>欢迎使用 Flark</h2>
+          <div class="sub">无中央服务器的话题群。先创建一个本地身份——它属于你的设备，用密钥签名，无需密码注册。</div>
+          <div class="avatar-pick">🙂<span class="cam">📷</span></div>
+          <div class="field">
+            <label>昵称</label>
+            <input class="input" id="nick" value="董奇峰" />
+          </div>
+          <div class="help">头像与昵称会随你的内容同步给同一 Space 的其他成员。设备密钥用于防止他人冒用你的身份。</div>
+          <button class="btn-primary" data-go="space">创建身份并继续</button>
+        </div>
+      </section>
+
+      <!-- ============ ADD SPACE ============ -->
+      <section class="page" id="page-space">
+        <div class="nav-bar">
+          <button class="link" data-go="onboard">返回</button>
+          <span class="title">添加 Space</span>
+          <span style="width:42px"></span>
+        </div>
+        <div class="onb" style="padding-top:20px">
+          <h2 style="font-size:26px">连接一个话题群</h2>
+          <div class="sub">一个本地文件夹或 WebDAV 目录就是一个「群」。同一目录下的成员共享话题与回复，没有服务器。</div>
+
+          <div class="seg" id="spaceSeg">
+            <button class="on" data-tab="dav">WebDAV</button>
+            <button data-tab="local">本地文件夹</button>
+          </div>
+
+          <div id="dav-fields">
+            <div class="field"><label>名称</label><input class="input" value="TikTok 账号变更" /></div>
+            <div class="field"><label>WebDAV 地址</label><input class="input" value="https://dav.example.com/flark/" /></div>
+            <div class="field"><label>账号</label><input class="input" value="dong" /></div>
+            <div class="field"><label>密码</label><input class="input" type="password" value="••••••••" /></div>
+            <div class="help">凭据仅保存在本机钥匙串。并发写入由「每设备独立追加 + 内容寻址」自动避免冲突。</div>
+          </div>
+          <div id="local-fields" style="display:none">
+            <div class="field"><label>名称</label><input class="input" value="本地话题群" /></div>
+            <div class="field">
+              <label>文件夹</label>
+              <div class="input" style="display:flex;align-items:center;justify-content:space-between;color:var(--label-3)">
+                <span>未选择</span><span style="color:var(--tint);font-weight:600">选择…</span>
+              </div>
+            </div>
+            <div class="help">选择 iCloud Drive / 本地 / 共享文件夹。后续可改为 WebDAV 或自建服务器，数据格式不变。</div>
+          </div>
+
+          <button class="btn-primary" data-go="list">连接并进入</button>
+          <button class="btn-ghost" data-go="list">先离线创建本地群</button>
+        </div>
+      </section>
+
+      <!-- ============ TOPIC LIST ============ -->
+      <section class="page" id="page-list">
+        <div class="scroll">
+          <div class="nav-bar">
+            <button class="iconbtn plain" data-go="space">👥</button>
+            <span class="title">TikTok 账号变更</span>
+            <button class="iconbtn plain">⌕</button>
+          </div>
+          <div class="nav-large">
+            <div class="eyebrow">话题群 · 12 位成员 · 已同步</div>
+            <h2>话题</h2>
+          </div>
+          <div class="list-wrap" id="listWrap">
+            <!-- card 1 -->
+            <article class="card">
+              <div class="row">
+                <div class="av a">董</div>
+                <div style="flex:1">
+                  <div class="who">董奇峰</div>
+                  <div class="meta">今天 16:25</div>
+                </div>
+                <button class="iconbtn plain" style="color:var(--label-3)">⋯</button>
+              </div>
+              <div class="topic-title">ttwid 白名单需要补充域名</div>
+              <div class="topic-body">麻烦把这些域名加入 ttwid 白名单：tiktokdramacenter.com、scope 变更已在发布单里登记，预计今天 16:10 发布。</div>
+              <div class="img-thumb">🖼️ 截图_发布单.png</div>
+              <div class="react-row" data-target="t1">
+                <button class="chip"><span class="stk"><span class="stk-lark">+1</span></span> 3</button>
+                <button class="chip off"><span class="stk">👍</span> 1</button>
+                <button class="add-react" title="添加反应">＋</button>
+              </div>
+              <div class="actbar">
+                <button data-go="detail">💬 回复 · 10</button>
+                <button class="react-open">☺ 表情</button>
+                <button data-go="detail">› 查看话题</button>
+              </div>
+            </article>
+            <!-- card 2 -->
+            <article class="card">
+              <div class="row">
+                <div class="av c">李</div>
+                <div style="flex:1">
+                  <div class="who">李杰雨</div>
+                  <div class="meta">今天 16:38</div>
+                </div>
+                <button class="iconbtn plain" style="color:var(--label-3)">⋯</button>
+              </div>
+              <div class="topic-title">PICO C TCC 发布评审</div>
+              <div class="topic-body">Goapi &amp; account.write 已就绪 <span class="stk">🚀</span>，Reviewers 已确认，等今晚窗口期上线。大家有问题这里同步 👇</div>
+              <div class="react-row" data-target="t2">
+                <button class="chip"><span class="stk"><span class="stk-lark green">DONE</span></span> 2</button>
+                <button class="add-react">＋</button>
+              </div>
+              <div class="actbar">
+                <button data-go="detail">💬 回复 · 4</button>
+                <button class="react-open">☺ 表情</button>
+                <button data-go="detail">› 查看话题</button>
+              </div>
+            </article>
+          </div>
+        </div>
+        <!-- floating compose, Liquid Glass -->
+        <button class="iconbtn" data-go="editor" style="position:absolute;right:22px;bottom:34px;width:60px;height:60px;font-size:26px;
+          background:var(--glass);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
+          border:1px solid var(--glass-stroke);color:var(--tint);box-shadow:0 12px 30px rgba(0,0,0,0.18)">＋</button>
+      </section>
+
+      <!-- ============ DETAIL ============ -->
+      <section class="page" id="page-detail">
+        <div class="scroll">
+          <div class="nav-bar">
+            <button class="link" data-go="list">话题</button>
+            <span class="title">话题详情</span>
+            <button class="iconbtn plain" style="color:var(--label-3)">⤴</button>
+          </div>
+          <div class="detail-head">
+            <div class="row">
+              <div class="av a">董</div>
+              <div style="flex:1"><div class="who">董奇峰</div><div class="meta">今天 16:25</div></div>
+            </div>
+            <div class="topic-title" style="font-size:20px">ttwid 白名单需要补充域名</div>
+            <div class="topic-body">麻烦把这些域名加入 ttwid 白名单：tiktokdramacenter.com、scope 变更已在发布单里登记，预计今天 16:10 发布。辛苦 👍</div>
+            <div class="img-thumb">🖼️ 截图_发布单.png</div>
+            <div class="react-row" data-target="d-topic">
+              <button class="chip"><span class="stk"><span class="stk-lark">+1</span></span> 3</button>
+              <button class="chip off"><span class="stk">👍</span> 1</button>
+              <button class="add-react">＋</button>
+            </div>
+          </div>
+          <div class="replies-label">全部回复 · 10</div>
+
+          <div class="reply">
+            <div class="av b">张</div>
+            <div class="body">
+              <div class="who">张欢 <span class="meta" style="font-weight:400">16:52</span></div>
+              <div class="bubble">coming，正在加，稍等 5 分钟</div>
+              <div class="react-row" data-target="r1" style="margin-top:8px">
+                <button class="chip"><span class="stk">👌</span> 1</button>
+                <button class="add-react">＋</button>
+              </div>
+            </div>
+          </div>
+          <div class="sep"></div>
+          <div class="reply">
+            <div class="av d">邵</div>
+            <div class="body">
+              <div class="who">邵楚涵 <span class="meta" style="font-weight:400">16:53</span></div>
+              <div class="bubble">已加完，麻烦验证下 tiktok.account.write 这个 scope <span class="stk"><span class="stk-lark green">DONE</span></span></div>
+              <div class="react-row" data-target="r2" style="margin-top:8px">
+                <button class="add-react">＋</button>
+              </div>
+            </div>
+          </div>
+          <div class="sep"></div>
+          <div class="reply">
+            <div class="av me">我</div>
+            <div class="body">
+              <div class="who">董奇峰（我） <span class="meta" style="font-weight:400">刚刚</span></div>
+              <div class="bubble" id="myReplyBubble">验证通过，谢谢 🙏</div>
+            </div>
+          </div>
+          <div style="height:20px"></div>
+        </div>
+        <div class="input-dock">
+          <button class="dock-ic react-open">😊</button>
+          <div class="dock-input" data-go="editor">写回复… 支持图片和表情</div>
+          <button class="dock-ic">🖼</button>
+          <button class="dock-ic dock-send" data-go="editor">↑</button>
+        </div>
+      </section>
+
+      <!-- ============ EDITOR ============ -->
+      <section class="page" id="page-editor">
+        <div class="nav-bar">
+          <button class="link" id="edCancel">取消</button>
+          <span class="title">新话题</span>
+          <button class="link" style="font-weight:700" id="edPost">发布</button>
+        </div>
+        <input class="input" id="edTitle" placeholder="标题（可选）" style="margin:14px 16px 0;width:auto" />
+        <div class="ed-area" id="edArea" contenteditable="true" data-empty="1">
+          <span class="ph">写点什么… 图片和表情直接在此输入框内所见即所得</span>
+        </div>
+        <div class="ed-toolbar">
+          <button class="dock-ic react-open" title="表情">😊</button>
+          <button class="dock-ic" id="edImg" title="图片">🖼</button>
+          <span class="grow"></span>
+          <button class="dock-ic dock-send" id="edPost2" title="发布">↑</button>
+        </div>
+      </section>
+
+      <!-- ============ EMOJI / REACTION SHEET ============ -->
+      <div class="sheet-mask" id="sheet">
+        <div class="sheet">
+          <div class="grabber"></div>
+          <div class="sheet-title">
+            <b id="sheetTitle">选择表情</b>
+            <button class="link" id="sheetClose">完成</button>
+          </div>
+          <h3>最常使用</h3>
+          <div class="emoji-grid" id="gridMost"></div>
+          <h3>默认表情</h3>
+          <div class="emoji-grid" id="gridDefault"></div>
+          <h3>Lark 贴纸</h3>
+          <div class="emoji-grid" id="gridLark"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="caption">
+    <b>说明</b><br/>
+    这是 iOS 26 设计语言（系统蓝、分组背景、大标题、Liquid Glass 工具条与浮动按钮）的可交互原型，不照搬飞书样式。<br/><br/>
+    可试：注册→添加 Space→进入列表→点表情/＋表情→进话题回复→写新话题（输入框内所见即所得）。<br/><br/>
+    表情库当前为 Unicode + Lark 贴纸占位（OK/+1/DONE 等彩色样式），后续替换为你提供的 Lark 表情图片资源。
+  </div>
+
+<script>
+  const pages = ['onboard','space','list','detail','editor'];
+  function go(name){
+    pages.forEach(p=>document.getElementById('page-'+p).classList.toggle('show', p===name));
+    document.querySelectorAll('.rail [data-go]').forEach(b=>{
+      b.classList.toggle('active', b.dataset.go===name && b.id!=='railEmoji');
+    });
+    document.querySelectorAll('.scroll').forEach(s=>s.scrollTop=0);
+  }
+  document.addEventListener('click', e=>{
+    const t = e.target.closest('[data-go]');
+    if(t){ go(t.dataset.go); }
+  });
+
+  /* space segmented control */
+  document.getElementById('spaceSeg').addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    document.querySelectorAll('#spaceSeg button').forEach(x=>x.classList.toggle('on',x===b));
+    const dav=b.dataset.tab==='dav';
+    document.getElementById('dav-fields').style.display=dav?'block':'none';
+    document.getElementById('local-fields').style.display=dav?'none':'block';
+  });
+
+  /* reaction chips toggle */
+  document.addEventListener('click', e=>{
+    const c=e.target.closest('.chip');
+    if(c){
+      const on=!c.classList.contains('off');
+      let n=parseInt(c.textContent.trim().match(/\d+$/)?.[0]||'0',10);
+      if(on){c.classList.add('off'); n=Math.max(0,n-1);}
+      else  {c.classList.remove('off'); n=n+1;}
+      c.lastChild.textContent=' '+n;
+    }
+  });
+
+  /* emoji sheet */
+  const MOST = ['👍','🙏','✅','🔥','😂','🎉'];
+  const DEF  = ['😀','😊','😅','🤝','👀','💡','🚀','⚠️','❤️','😭','🤔','👏','🙌','💪','✨','🥳','😎','🫡'];
+  const LARK = [['OK','blue'],['+1','orange'],['YES','green'],['DONE','green'],['NO','red'],['GET','orange']];
+  function stickerHTML(s){return `<span class="stk-lark ${s[1]}">${s[0]}</span>`}
+  function fill(id, arr, lark){
+    const g=document.getElementById(id); g.innerHTML='';
+    arr.forEach(v=>{
+      const b=document.createElement('button'); b.className='emoji-cell';
+      b.innerHTML = lark? stickerHTML(v) : v;
+      b.onclick=()=>pickEmoji(lark?`[${v[0]}]`:v, b.innerHTML);
+      g.appendChild(b);
+    });
+  }
+  fill('gridMost',MOST,false); fill('gridDefault',DEF,false); fill('gridLark',LARK,true);
+
+  const sheet=document.getElementById('sheet');
+  let reactCtx=null;
+  document.addEventListener('click', e=>{
+    const r=e.target.closest('.add-react, .react-open');
+    if(r){
+      reactCtx = r.classList.contains('add-react') ? r.closest('.react-row') : null;
+      document.getElementById('sheetTitle').textContent = reactCtx ? '添加表情' : '选择表情';
+      sheet.classList.add('show');
+    }
+  });
+  document.getElementById('sheetClose').onclick=()=>sheet.classList.remove('show');
+  sheet.addEventListener('click', e=>{ if(e.target===sheet) sheet.classList.remove('show'); });
+
+  function pickEmoji(token, html){
+    if(reactCtx){
+      // add a reaction chip to the targeted row
+      const addBtn=reactCtx.querySelector('.add-react');
+      const chip=document.createElement('button'); chip.className='chip';
+      chip.innerHTML = `<span class="stk">${html}</span><span> 1</span>`;
+      reactCtx.insertBefore(chip, addBtn);
+      sheet.classList.remove('show'); reactCtx=null;
+      return;
+    }
+    // editor / reply: insert into compose area
+    const area=document.getElementById('edArea');
+    if(area){
+      if(area.dataset.empty){ area.innerHTML=''; delete area.dataset.empty; }
+      area.insertAdjacentHTML('beforeend', `<span class="stk">${html}</span>`);
+    }
+    sheet.classList.remove('show');
+  }
+
+  /* editor: the input box itself is the WYSIWYG live preview (contenteditable) */
+  const area=document.getElementById('edArea');
+  area.addEventListener('input', ()=>{ if(area.textContent.trim()) delete area.dataset.empty; });
+  area.addEventListener('focus', ()=>{ if(area.dataset.empty){ area.innerHTML=''; delete area.dataset.empty; } });
+  document.getElementById('edImg').onclick=()=>{
+    if(area.dataset.empty){ area.innerHTML=''; delete area.dataset.empty; }
+    area.insertAdjacentHTML('beforeend','<div class="img-thumb" style="height:120px;margin:8px 0">🖼️ 已插入图片</div>');
+  };
+  function post(){
+    sheet.classList.remove('show');
+    area.innerHTML='<span class="ph">写点什么… 图片和表情直接在此输入框内所见即所得</span>';
+    area.dataset.empty='1'; document.getElementById('edTitle').value='';
+    go('list');
+  }
+  document.getElementById('edPost').onclick=post;
+  document.getElementById('edPost2').onclick=post;
+  document.getElementById('edCancel').onclick=()=>go('list');
+</script>
+</body>
+</html>
