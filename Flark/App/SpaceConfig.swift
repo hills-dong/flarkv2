@@ -40,4 +40,14 @@ enum SpaceStore {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("\(id).json")
     }
+
+    /// Purgeable on-disk cache of a Space's immutable image blobs. Lives in
+    /// Caches (the OS may evict it under storage pressure; misses just
+    /// re-download), and is never synced to the backend.
+    static func blobCacheRoot(for id: String) -> URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let dir = base.appendingPathComponent("FlarkBlobs/\(id)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
 }

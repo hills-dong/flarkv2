@@ -171,6 +171,9 @@ final class AppModel {
     func openSpace(_ cfg: SpaceConfig) async {
         guard let identity else { return }
         let backend: StorageBackend
+        // Local backends already keep blobs on disk; only the network-backed
+        // (WebDAV) Space benefits from a read/write-through blob cache.
+        var blobCache: BlobCache?
         switch cfg.kind {
         case .local:
             backend = LocalFileBackend(root: SpaceStore.localRoot(for: cfg.id))
@@ -178,9 +181,11 @@ final class AppModel {
             guard let u = URL(string: cfg.webdavURL ?? "") else { return }
             let pw = Keychain.getString(spacePwAccount(cfg.id)) ?? ""
             backend = WebDAVBackend(baseURL: u, username: cfg.webdavUser ?? "", password: pw)
+            blobCache = BlobCache(directory: SpaceStore.blobCacheRoot(for: cfg.id))
         }
         let clock = HLCClock(nodeID: identity.authorID)
-        let repo = SpaceRepository(backend: backend, identity: identity, spaceID: cfg.id)
+        let repo = SpaceRepository(backend: backend, identity: identity,
+                                   spaceID: cfg.id, blobCache: blobCache)
         let snapshots = SnapshotStore(url: SpaceStore.snapshotURL(for: cfg.id))
         let engine = SyncEngine(repo: repo, clock: clock, identity: identity,
                                 snapshotStore: snapshots)
@@ -254,8 +259,9 @@ final class AppModel {
             case .webdav:
                 Keychain.delete(spacePwAccount(cfg.id))
             }
-            // The projection cache is per-Space regardless of backend kind.
+            // The projection + blob caches are per-Space regardless of backend.
             try? FileManager.default.removeItem(at: SpaceStore.snapshotURL(for: cfg.id))
+            try? FileManager.default.removeItem(at: SpaceStore.blobCacheRoot(for: cfg.id))
 
             if wasCurrent {
                 if let next = spaces.first {

@@ -14,11 +14,16 @@ public actor SpaceRepository {
     private let backend: StorageBackend
     private let identity: DeviceIdentity
     public let spaceID: String
+    /// Read/write-through local cache for immutable blobs. nil ⇒ no caching
+    /// (e.g. a local-file backend, where the blob is already on disk).
+    private let blobCache: BlobCache?
 
-    public init(backend: StorageBackend, identity: DeviceIdentity, spaceID: String) {
+    public init(backend: StorageBackend, identity: DeviceIdentity,
+                spaceID: String, blobCache: BlobCache? = nil) {
         self.backend = backend
         self.identity = identity
         self.spaceID = spaceID
+        self.blobCache = blobCache
     }
 
     private static let encoder: JSONEncoder = {
@@ -48,6 +53,9 @@ public actor SpaceRepository {
 
     public func putBlob(_ data: Data) async throws -> String {
         let id = base32(Data(SHA256.hash(data: data)))
+        // Own uploads should render instantly and survive offline, even
+        // before the backend round-trip — cache the bytes up front.
+        blobCache?.store(data, for: id)
         let path = P("blobs/\(id)")
         if try await backend.exists(path) { return id }
         // createOnly: identical content → identical name → never a conflict.
@@ -57,7 +65,10 @@ public actor SpaceRepository {
     }
 
     public func getBlob(_ id: String) async throws -> Data {
-        try await backend.get(P("blobs/\(id)")).data
+        if let cached = blobCache?.data(for: id) { return cached }
+        let data = try await backend.get(P("blobs/\(id)")).data
+        blobCache?.store(data, for: id)   // content-addressed ⇒ never stale
+        return data
     }
 
     // MARK: - Events
