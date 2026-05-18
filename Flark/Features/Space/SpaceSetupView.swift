@@ -2,11 +2,16 @@ import SwiftUI
 
 struct SpaceSetupView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    /// Called after a Space is connected so a presenting sheet can dismiss
+    /// and drop the user straight into the new Space.
+    var onConnected: () -> Void = {}
     @State private var kind: SpaceConfig.Kind = .webdav
     @State private var name = ""
     @State private var url = ""
     @State private var user = ""
     @State private var password = ""
+    @State private var spaceId = ""
 
     var body: some View {
         ScrollView {
@@ -27,6 +32,8 @@ struct SpaceSetupView: View {
                     field("WebDAV 地址", text: $url, placeholder: "https://dav.example.com/flark/")
                     field("账号", text: $user, placeholder: "用户名")
                     secureField("密码", text: $password)
+                    field("群 ID（可选）", text: $spaceId,
+                          placeholder: "加入已有群时填写，如 lifememov2；留空则新建")
                     Text("凭据仅保存在本机钥匙串。并发写入由「每设备独立追加 + 内容寻址」自动避免冲突。")
                         .font(.footnote).foregroundStyle(.secondary)
                 } else {
@@ -57,10 +64,13 @@ struct SpaceSetupView: View {
 
     private func connect() {
         if kind == .webdav {
-            model.addWebDAVSpace(name: name, url: url, user: user, password: password)
+            model.addWebDAVSpace(name: name, url: url, user: user, password: password,
+                                  spaceID: spaceId)
         } else {
             model.addLocalSpace(name: name)
         }
+        dismiss()
+        onConnected()
     }
 
     private func field(_ label: String, text: Binding<String>, placeholder: String) -> some View {
@@ -95,6 +105,7 @@ struct SpaceListView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var adding = false
+    @State private var pendingDelete: SpaceConfig?
 
     var body: some View {
         NavigationStack {
@@ -118,6 +129,13 @@ struct SpaceListView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                pendingDelete = space
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
+                        }
                     }
                 }
             }
@@ -128,7 +146,21 @@ struct SpaceListView: View {
                 }
             }
             .sheet(isPresented: $adding) {
-                SpaceSetupView()
+                SpaceSetupView { adding = false; dismiss() }
+            }
+            .confirmationDialog("删除话题群",
+                                isPresented: Binding(get: { pendingDelete != nil },
+                                                     set: { if !$0 { pendingDelete = nil } }),
+                                presenting: pendingDelete) { space in
+                Button("删除「\(space.name)」", role: .destructive) {
+                    model.deleteSpace(space)
+                    pendingDelete = nil
+                }
+                Button("取消", role: .cancel) { pendingDelete = nil }
+            } message: { space in
+                Text(space.kind == .local
+                     ? "本地话题群将被永久删除，其中的全部话题、回复与图片都会从本机移除，无法恢复。"
+                     : "将从本机移除该话题群与已保存的凭据；WebDAV 服务器上的共享数据不受影响。")
             }
         }
     }

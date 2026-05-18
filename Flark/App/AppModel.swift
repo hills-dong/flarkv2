@@ -15,6 +15,8 @@ final class AppModel {
     var spaces: [SpaceConfig] = []
     var currentSpace: SpaceConfig?
     var projection = Projection()
+    /// Coarse background sync/compaction activity for the status indicator.
+    var syncStatus: SyncActivity = .idle
 
     /// All local accounts (multi-user). `currentAccountID` is the active one.
     var accounts: [AccountRef] = []
@@ -153,8 +155,13 @@ final class AppModel {
         Task { await openSpace(cfg) }
     }
 
-    func addWebDAVSpace(name: String, url: String, user: String, password: String) {
-        let cfg = SpaceConfig(id: UUID().uuidString, name: name, kind: .webdav,
+    /// `spaceID` lets a user join an existing shared Space (it is the WebDAV
+    /// directory name). Blank → a fresh random Space.
+    func addWebDAVSpace(name: String, url: String, user: String, password: String,
+                        spaceID: String = "") {
+        let trimmed = spaceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let id = trimmed.isEmpty ? UUID().uuidString : trimmed
+        let cfg = SpaceConfig(id: id, name: name, kind: .webdav,
                               webdavURL: url, webdavUser: user)
         Keychain.setString(password, account: spacePwAccount(cfg.id), sync: true)
         spaces.append(cfg); persistSpaces()
@@ -183,9 +190,16 @@ final class AppModel {
         await engine.setOnChange { [weak self] snap in
             Task { @MainActor in self?.projection = snap }
         }
-        // Paint instantly from the local cache, then fold only new events.
+        await engine.setOnActivity { [weak self] a in
+            Task { @MainActor in self?.syncStatus = a }
+        }
+        // Paint instantly from the local cache and show the UI right away;
+        // the network bootstrap + initial sync below then run in the
+        // background (surfaced only by the slim top status bar) instead of
+        // blocking the whole screen on a centered spinner.
         await engine.restoreSnapshot()
         self.projection = await engine.projection
+        self.stage = .ready
         try? await repo.bootstrap(spaceName: cfg.name)
         if !displayName.isEmpty {                       // never clobber with empty
             try? await repo.writeProfile(displayName: displayName, avatarBlobID: nil)
@@ -197,7 +211,6 @@ final class AppModel {
         await engine.sync(maxNewEvents: 20)
         await engine.startPolling(interval: cfg.kind == .webdav ? 15 : 3, window: 20)
         self.projection = await engine.projection
-        self.stage = .ready
     }
 
     /// Flush the local projection cache (call when the app backgrounds) so the
@@ -210,7 +223,47 @@ final class AppModel {
         Task {
             await engine?.stopPolling()
             projection = Projection()
+            syncStatus = .idle
             await openSpace(cfg)
+        }
+    }
+
+    /// Remove a Space. A **local** Space is destroyed completely — its whole
+    /// event log, blobs and projection cache are wiped from this device. A
+    /// **WebDAV** Space is only detached locally (config + saved credential +
+    /// cache); the shared remote directory is left untouched for other
+    /// members. If the deleted Space was open, fall back to another one (or
+    /// the no-Space screen).
+    func deleteSpace(_ cfg: SpaceConfig) {
+        Task {
+            let wasCurrent = currentSpace?.id == cfg.id
+            if wasCurrent {
+                await engine?.stopPolling()
+                engine = nil; repo = nil; clock = nil
+                projection = Projection()
+                currentSpace = nil
+                syncStatus = .idle
+            }
+
+            spaces.removeAll { $0.id == cfg.id }
+            persistSpaces()
+
+            switch cfg.kind {
+            case .local:
+                try? FileManager.default.removeItem(at: SpaceStore.localRoot(for: cfg.id))
+            case .webdav:
+                Keychain.delete(spacePwAccount(cfg.id))
+            }
+            // The projection cache is per-Space regardless of backend kind.
+            try? FileManager.default.removeItem(at: SpaceStore.snapshotURL(for: cfg.id))
+
+            if wasCurrent {
+                if let next = spaces.first {
+                    await openSpace(next)
+                } else {
+                    stage = .noSpace
+                }
+            }
         }
     }
 
@@ -225,8 +278,8 @@ final class AppModel {
         }
     }
 
-    func createTopic(title: String, body: ContentDocument) {
-        emit(.topicCreate(topicID: UUID().uuidString, title: title, body: body))
+    func createTopic(body: ContentDocument) {
+        emit(.topicCreate(topicID: UUID().uuidString, body: body))
     }
 
     /// A topic can be deleted only by its own author and only while it has
@@ -244,6 +297,16 @@ final class AppModel {
 
     func createReply(topicID: String, body: ContentDocument) {
         emit(.replyCreate(replyID: UUID().uuidString, topicID: topicID, body: body))
+    }
+
+    /// A reply can be deleted only by its own author.
+    func canDeleteReply(_ replyID: String) -> Bool {
+        guard let reply = projection.replies[replyID] else { return false }
+        return reply.authorID == authorID
+    }
+
+    func deleteReply(_ replyID: String) {
+        emit(.replyDelete(replyID: replyID))
     }
 
     func toggleReaction(targetID: String, type: TargetType, emojiID: String) {
