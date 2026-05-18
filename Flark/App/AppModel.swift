@@ -194,8 +194,8 @@ final class AppModel {
         }
         // Windowed: newest topics first so a new member isn't blocked on the
         // whole log; polling backfills the rest newest→oldest in the bg.
-        await engine.sync(maxNewEvents: 500)
-        await engine.startPolling(interval: cfg.kind == .webdav ? 15 : 3)
+        await engine.sync(maxNewEvents: 20)
+        await engine.startPolling(interval: cfg.kind == .webdav ? 15 : 3, window: 20)
         self.projection = await engine.projection
         self.stage = .ready
     }
