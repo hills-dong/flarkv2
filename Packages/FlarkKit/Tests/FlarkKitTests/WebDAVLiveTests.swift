@@ -43,7 +43,7 @@ final class WebDAVLiveTests: XCTestCase {
                                  identity: zhang)
 
         let t = await engineA.makeEvent(
-            .topicCreate(topicID: "t1", title: "Live", body: ContentDocument(text: "via WebDAV")),
+            .topicCreate(topicID: "t1", body: ContentDocument(text: "via WebDAV")),
             authorID: dong.authorID, publicKey: dong.publicKeyData)
         await engineA.submit(t)
         await engineA.flush()
@@ -51,7 +51,7 @@ final class WebDAVLiveTests: XCTestCase {
         // Second device pulls it back through PROPFIND + GET.
         await engineB.sync()
         let pB = await engineB.projection
-        XCTAssertEqual(pB.topics["t1"]?.title, "Live")
+        XCTAssertEqual(pB.topics["t1"]?.body.plainText, "via WebDAV")
 
         // Concurrent: both react to the same target from different author
         // dirs — unique filenames mean no write-write conflict.

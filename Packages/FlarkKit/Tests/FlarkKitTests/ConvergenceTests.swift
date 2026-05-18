@@ -21,7 +21,7 @@ final class ConvergenceTests: XCTestCase {
     func testSignatureRejectsTamperAndImpersonation() {
         let id = DeviceIdentity.generate()
         let clock = HLCClock(nodeID: id.authorID)
-        var e = signed(id, clock, .topicCreate(topicID: "t1", title: "Hi",
+        var e = signed(id, clock, .topicCreate(topicID: "t1",
                                                body: ContentDocument(text: "yo")))
         XCTAssertTrue(e.isAuthentic())
         // tamper payload → signature invalid
@@ -30,7 +30,7 @@ final class ConvergenceTests: XCTestCase {
         // impersonation: claim someone else's id with our key
         var imp = Event(hlc: clock.send(), authorID: "someone-else",
                         publicKey: id.publicKeyData, spaceID: "s1",
-                        payload: .topicCreate(topicID: "t2", title: "x",
+                        payload: .topicCreate(topicID: "t2",
                                               body: ContentDocument(text: "x")))
         try? imp.sign(with: id)
         XCTAssertFalse(imp.isAuthentic())
@@ -44,7 +44,7 @@ final class ConvergenceTests: XCTestCase {
         let dc = HLCClock(nodeID: dongID.authorID, now: { 1_000 })
         let zc = HLCClock(nodeID: zhangID.authorID, now: { 1_001 })
 
-        let e1 = signed(dongID, dc, .topicCreate(topicID: "t1", title: "Release",
+        let e1 = signed(dongID, dc, .topicCreate(topicID: "t1",
                                                  body: ContentDocument(text: "ship 22:00")))
         let e2 = signed(zhangID, zc, .replyCreate(replyID: "r1", topicID: "t1",
                                                   body: ContentDocument(text: "coming")))
@@ -61,7 +61,7 @@ final class ConvergenceTests: XCTestCase {
         let pC = MergeReducer.build(from: [e3, e1, e5, e2, e4]) // shuffled
 
         for p in [pA, pB, pC] {
-            XCTAssertEqual(p.topics["t1"]?.title, "Release")
+            XCTAssertEqual(p.topics["t1"]?.body.plainText, "ship 22:00")
             XCTAssertEqual(p.topics["t1"]?.replyCount, 1)
             XCTAssertEqual(p.replies(forTopic: "t1").map(\.id), ["r1"])
             let tally = p.tallies(forTarget: "t1").first { $0.emojiID == "u_thumbsup" }
@@ -78,7 +78,7 @@ final class ConvergenceTests: XCTestCase {
     func testReduceTrustedEqualsReduceAndIdempotent() {
         let id = DeviceIdentity.generate()
         let clock = HLCClock(nodeID: id.authorID)
-        let e1 = signed(id, clock, .topicCreate(topicID: "t1", title: "A",
+        let e1 = signed(id, clock, .topicCreate(topicID: "t1",
                                                 body: ContentDocument(text: "hello")))
         let e2 = signed(id, clock, .replyCreate(replyID: "r1", topicID: "t1",
                                                 body: ContentDocument(text: "hi")))
@@ -105,9 +105,9 @@ final class ConvergenceTests: XCTestCase {
     func testIndicesAreOrderIndependent() {
         let a = DeviceIdentity.generate()
         let clock = HLCClock(nodeID: a.authorID, now: { 5_000 })
-        let t1 = signed(a, clock, .topicCreate(topicID: "t1", title: "first",
+        let t1 = signed(a, clock, .topicCreate(topicID: "t1",
                                                body: ContentDocument(text: "x")))
-        let t2 = signed(a, clock, .topicCreate(topicID: "t2", title: "second",
+        let t2 = signed(a, clock, .topicCreate(topicID: "t2",
                                                body: ContentDocument(text: "y")))
         let r1 = signed(a, clock, .replyCreate(replyID: "r1", topicID: "t1",
                                                body: ContentDocument(text: "a")))
@@ -135,7 +135,7 @@ final class ConvergenceTests: XCTestCase {
     func testRepliesFoldedBeforeTopicStillConverge() {
         let a = DeviceIdentity.generate()
         let clock = HLCClock(nodeID: a.authorID)
-        let topic = signed(a, clock, .topicCreate(topicID: "t1", title: "T",
+        let topic = signed(a, clock, .topicCreate(topicID: "t1",
                                                   body: ContentDocument(text: "x")))
         let rep1 = signed(a, clock, .replyCreate(replyID: "r1", topicID: "t1",
                                                  body: ContentDocument(text: "1")))
@@ -154,7 +154,7 @@ final class ConvergenceTests: XCTestCase {
     func testIdempotentReapply() {
         let id = DeviceIdentity.generate()
         let clock = HLCClock(nodeID: id.authorID)
-        let e = signed(id, clock, .topicCreate(topicID: "t1", title: "x",
+        let e = signed(id, clock, .topicCreate(topicID: "t1",
                                                body: ContentDocument(text: "x")))
         var p = Projection()
         MergeReducer.reduce(&p, events: [e])

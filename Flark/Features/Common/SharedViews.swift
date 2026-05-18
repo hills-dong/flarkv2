@@ -52,7 +52,13 @@ struct EmojiGlyph: View {
     }
 
     @ViewBuilder private var fallback: some View {
-        Text(item?.unicode ?? "❓").font(.system(size: size * 0.95))
+        // An Apple color-emoji glyph box is ~1.2× the font point size, so a
+        // tight `size × size` frame would crop it top & bottom. Letting the
+        // single-line Text scale down makes the whole glyph fit the frame.
+        Text(item?.unicode ?? "❓")
+            .font(.system(size: size))
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
     }
 }
 
@@ -249,5 +255,44 @@ struct ContentDocumentView: View {
         }
         all.append(line)
         return all
+    }
+}
+
+/// Left-aligned wrapping row: lays children out left→right and breaks to a
+/// new line when the proposed width runs out. Used so reaction chips show
+/// in full (wrapped) instead of overflowing a single clipped HStack.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews,
+                      cache: inout Void) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0, maxX: CGFloat = 0
+        for sv in subviews {
+            let s = sv.sizeThatFits(.unspecified)
+            if x > 0, x + s.width > maxWidth {
+                x = 0; y += lineHeight + lineSpacing; lineHeight = 0
+            }
+            x += s.width + spacing
+            lineHeight = max(lineHeight, s.height)
+            maxX = max(maxX, x - spacing)
+        }
+        return CGSize(width: min(maxX, maxWidth), height: y + lineHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize,
+                        subviews: Subviews, cache: inout Void) {
+        var x = bounds.minX, y = bounds.minY, lineHeight: CGFloat = 0
+        for sv in subviews {
+            let s = sv.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + s.width > bounds.maxX {
+                x = bounds.minX; y += lineHeight + lineSpacing; lineHeight = 0
+            }
+            sv.place(at: CGPoint(x: x, y: y), anchor: .topLeading,
+                     proposal: ProposedViewSize(s))
+            x += s.width + spacing
+            lineHeight = max(lineHeight, s.height)
+        }
     }
 }

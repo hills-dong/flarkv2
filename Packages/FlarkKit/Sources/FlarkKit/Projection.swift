@@ -7,7 +7,6 @@ import Foundation
 public struct TopicState: Identifiable, Equatable, Sendable, Codable {
     public let id: String
     public var authorID: String
-    public var title: String
     public var body: ContentDocument
     public var createdAt: Int64        // hlc.wallMillis of creating event
     public var replyCount: Int
@@ -18,19 +17,42 @@ public struct TopicState: Identifiable, Equatable, Sendable, Codable {
 /// body so the list array is cheap to build, copy and diff at 10k+ topics.
 /// `preview` is a truncated plain-text rendering of the body.
 public struct TopicRow: Identifiable, Equatable, Sendable, Codable {
+    /// Just the blob ids of a topic's images, in document order. Dimensions
+    /// are intentionally omitted — the list renders fixed-size thumbnails.
+    public struct Image: Equatable, Sendable, Codable {
+        public let blobID: String
+    }
+
     public let id: String
     public let authorID: String
-    public let title: String
     public let preview: String
     public let createdAt: Int64
     public let replyCount: Int
     public let lastActivity: Int64
+    /// Topic images for the list thumbnails. Capped so a single huge gallery
+    /// can't bloat the snapshotted row map at 10k+ topics.
+    public let images: [Image]
+
+    /// Max image thumbnails carried into the list row.
+    static let maxRowImages = 9
 
     static func make(from t: TopicState) -> TopicRow {
-        TopicRow(id: t.id, authorID: t.authorID, title: t.title,
-                 preview: String(t.body.plainText.prefix(200)),
-                 createdAt: t.createdAt, replyCount: t.replyCount,
-                 lastActivity: t.lastActivity)
+        var imgs: [Image] = []
+        // Preview is text + emoji only — images render as real thumbnails in
+        // the list, so the "[图片]" placeholder from `plainText` is dropped.
+        var preview = ""
+        for seg in t.body.segments {
+            switch seg {
+            case .text(let s): preview += s
+            case .emoji(let id): preview += "[\(id)]"
+            case .image(let blobID, _, _): imgs.append(Image(blobID: blobID))
+            }
+        }
+        return TopicRow(id: t.id, authorID: t.authorID,
+                        preview: String(preview.prefix(200)),
+                        createdAt: t.createdAt, replyCount: t.replyCount,
+                        lastActivity: t.lastActivity,
+                        images: Array(imgs.prefix(maxRowImages)))
     }
 }
 
@@ -148,6 +170,21 @@ public struct Projection: Sendable {
         replyIDsByTopic[reply.topicID] = ids
     }
 
+    /// Drop a reply and everything derived from it: its slot in the topic
+    /// bucket, any reactions targeting it, and the topic's aggregates.
+    private mutating func removeReply(_ replyID: String) {
+        guard let r = replies.removeValue(forKey: replyID) else { return }
+        if var ids = replyIDsByTopic[r.topicID],
+           let i = ids.firstIndex(of: replyID) {
+            ids.remove(at: i)
+            replyIDsByTopic[r.topicID] = ids
+        }
+        for k in reactions.filter({ $0.value.targetID == replyID }).map(\.key) {
+            reactions.removeValue(forKey: k)
+        }
+        refreshTopic(r.topicID)
+    }
+
     /// Recompute a topic's reply-derived aggregates from the bucket and
     /// refresh its row. Deriving (not incrementing) keeps the fold correct
     /// even when a topic's create event is folded AFTER its replies — which
@@ -201,10 +238,10 @@ public struct Projection: Sendable {
         appliedEventIDs.insert(event.eventID)
 
         switch event.payload {
-        case .topicCreate(let topicID, let title, let body):
+        case .topicCreate(let topicID, let body):
             if topics[topicID] == nil {
                 topics[topicID] = TopicState(
-                    id: topicID, authorID: event.authorID, title: title, body: body,
+                    id: topicID, authorID: event.authorID, body: body,
                     createdAt: event.hlc.wallMillis, replyCount: 0,
                     lastActivity: event.hlc.wallMillis)
                 // Replies may already be folded (windowed newest-first) — derive.
@@ -235,6 +272,12 @@ public struct Projection: Sendable {
                 replies[replyID] = r
                 indexReply(r)
                 refreshTopic(topicID)   // no-op if the topic isn't folded yet
+            }
+
+        case .replyDelete(let replyID):
+            // Only the reply's own author may delete it.
+            if let r = replies[replyID], r.authorID == event.authorID {
+                removeReply(replyID)
             }
 
         case .reactionSet(let targetID, _, let emojiID, let removed):
@@ -303,7 +346,7 @@ public enum MergeReducer {
     /// Bumped whenever reducer semantics or projected state shape change.
     /// Persisted in a snapshot; a mismatch forces a full rebuild from the
     /// (immutable, always-authoritative) event log.
-    public static let reducerFingerprint = "v1-rows-buckets"
+    public static let reducerFingerprint = "v4-row-images-no-img-preview"
 
     /// Fold a batch of events into a projection. Unauthentic events are
     /// dropped. Order-independent: events are globally sorted first.

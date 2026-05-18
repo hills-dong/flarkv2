@@ -22,7 +22,7 @@ final class PerformanceTests: XCTestCase {
             return e
         }
         for t in 0..<topics {
-            events.append(sign(.topicCreate(topicID: "t\(t)", title: "Topic \(t)",
+            events.append(sign(.topicCreate(topicID: "t\(t)",
                                             body: ContentDocument(text: "body \(t)"))))
             for r in 0..<repliesPer {
                 events.append(sign(.replyCreate(replyID: "t\(t)-r\(r)", topicID: "t\(t)",

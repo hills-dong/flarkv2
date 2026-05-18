@@ -32,6 +32,9 @@ public protocol StorageBackend: Sendable {
     func put(_ path: String, data: Data, precondition: WritePrecondition) async throws
     func makeDirectory(_ path: String) async throws
     func exists(_ path: String) async throws -> Bool
+    /// Remove a file. Idempotent: deleting an absent path is not an error
+    /// (the postcondition — path gone — already holds).
+    func delete(_ path: String) async throws
 }
 
 public extension StorageBackend {

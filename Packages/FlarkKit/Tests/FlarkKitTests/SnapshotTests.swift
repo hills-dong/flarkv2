@@ -19,9 +19,9 @@ final class SnapshotTests: XCTestCase {
         let ca = HLCClock(nodeID: a.authorID, now: { 1_000 })
         let cb = HLCClock(nodeID: b.authorID, now: { 1_001 })
         let events = [
-            signed(a, ca, .topicCreate(topicID: "t1", title: "Release",
+            signed(a, ca, .topicCreate(topicID: "t1",
                                        body: ContentDocument(text: "ship 22:00"))),
-            signed(a, ca, .topicCreate(topicID: "t2", title: "Lunch",
+            signed(a, ca, .topicCreate(topicID: "t2",
                                        body: ContentDocument(segments: [.text("food "), .emoji(id: "u_pizza")]))),
             signed(b, cb, .replyCreate(replyID: "r1", topicID: "t1",
                                        body: ContentDocument(text: "on it"))),

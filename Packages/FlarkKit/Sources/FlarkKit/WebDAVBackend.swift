@@ -95,6 +95,15 @@ public final class WebDAVBackend: StorageBackend, @unchecked Sendable {
         return (200..<300).contains((resp as? HTTPURLResponse)?.statusCode ?? 0)
     }
 
+    public func delete(_ path: String) async throws {
+        let (_, resp) = try await dataTask(request("DELETE", path))
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        // 404/409 == already gone, which satisfies the postcondition.
+        guard (200..<300).contains(code) || code == 404 || code == 409 else {
+            throw mapStatus(code)
+        }
+    }
+
     private func ensureParents(of path: String) async throws {
         let parts = path.split(separator: "/").dropLast()
         var acc = ""

@@ -64,4 +64,10 @@ public final class LocalFileBackend: StorageBackend, @unchecked Sendable {
     public func exists(_ path: String) async throws -> Bool {
         fm.fileExists(atPath: url(path).path)
     }
+
+    public func delete(_ path: String) async throws {
+        let u = url(path)
+        guard fm.fileExists(atPath: u.path) else { return }   // idempotent
+        try fm.removeItem(at: u)
+    }
 }

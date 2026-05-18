@@ -3,6 +3,7 @@ import FlarkKit
 
 struct TopicDetailView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
     let topicID: String
     @State private var replying = false
 
@@ -20,13 +21,9 @@ struct TopicDetailView: View {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(model.displayName(for: topic.authorID))
                                     .font(.subheadline.weight(.semibold))
-                                Text(Date(timeIntervalSince1970: Double(topic.createdAt) / 1000),
-                                     style: .relative)
+                                Text(EventTime.label(Int64(topic.createdAt)))
                                     .font(.caption).foregroundStyle(.secondary)
                             }
-                        }
-                        if !topic.title.isEmpty {
-                            Text(topic.title).font(.title3.weight(.bold))
                         }
                         ContentDocumentView(doc: topic.body)
                         ReactionBar(targetID: topic.id, targetType: .topic)
@@ -34,6 +31,13 @@ struct TopicDetailView: View {
                     .padding(18)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .cardSurface()
+                    .contentShape(Rectangle())
+                    .reactionPanel(
+                        targetID: topic.id, targetType: .topic,
+                        onDelete: model.canDeleteTopic(topic.id) ? {
+                            model.deleteTopic(topic.id)
+                            dismiss()
+                        } : nil)
                     .padding(16)
                 }
 
@@ -49,8 +53,7 @@ struct TopicDetailView: View {
                                        name: model.displayName(for: reply.authorID), size: 32)
                             Text(model.displayName(for: reply.authorID))
                                 .font(.subheadline.weight(.semibold))
-                            Text(Date(timeIntervalSince1970: Double(reply.createdAt) / 1000),
-                                 style: .relative)
+                            Text(EventTime.label(Int64(reply.createdAt)))
                                 .font(.caption).foregroundStyle(.secondary)
                             Spacer()
                         }
@@ -60,6 +63,12 @@ struct TopicDetailView: View {
                             .padding(.leading, 42)
                     }
                     .padding(.horizontal, 18).padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                    .reactionPanel(
+                        targetID: reply.id, targetType: .reply,
+                        onDelete: model.canDeleteReply(reply.id) ? {
+                            model.deleteReply(reply.id)
+                        } : nil)
                     Divider().padding(.leading, 18)
                 }
                 Color.clear.frame(height: 80)
@@ -76,6 +85,7 @@ struct TopicDetailView: View {
                         Image(systemName: "square.and.pencil")
                     }
                     .padding(.horizontal, 18).padding(.vertical, 14)
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .glassSurface(Capsule())
