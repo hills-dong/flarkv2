@@ -167,7 +167,7 @@ struct TopicImageThumbnail: View {
             }
             .clipped()
             .allowsHitTesting(false)
-            .task(id: blobID) { data = await model.loadImage(blobID) }
+            .task(id: blobID) { data = await model.loadThumbnail(blobID) }
     }
 
     private func platformImage(_ d: Data) -> Image? {

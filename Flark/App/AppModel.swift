@@ -259,9 +259,11 @@ final class AppModel {
             case .webdav:
                 Keychain.delete(spacePwAccount(cfg.id))
             }
-            // The projection + blob caches are per-Space regardless of backend.
+            // The projection + blob + thumbnail caches are per-Space
+            // regardless of backend kind.
             try? FileManager.default.removeItem(at: SpaceStore.snapshotURL(for: cfg.id))
             try? FileManager.default.removeItem(at: SpaceStore.blobCacheRoot(for: cfg.id))
+            try? FileManager.default.removeItem(at: SpaceStore.thumbCacheRoot(for: cfg.id))
 
             if wasCurrent {
                 if let next = spaces.first {
@@ -367,6 +369,57 @@ final class AppModel {
 
     func loadImage(_ id: String) async -> Data? {
         try? await repo?.getBlob(id)
+    }
+
+    /// Like `loadImage`, but returns a downscaled JPEG sized for list rows and
+    /// memoizes it on disk. The list shows many images at ≤180pt; decoding the
+    /// full ~2048px blob for each is needless CPU + memory. The full blob is
+    /// still fetched once (and cached by `BlobCache`); the thumbnail is then
+    /// derived, cached, and reused on every subsequent appearance.
+    ///
+    /// The fetch hops to the repo actor; decode/resize/IO run off the main
+    /// actor (the helpers below are `nonisolated`) so scrolling stays smooth.
+    func loadThumbnail(_ id: String, maxEdge: Int = 900) async -> Data? {
+        guard let spaceID = currentSpace?.id else { return await loadImage(id) }
+        let url = SpaceStore.thumbCacheRoot(for: spaceID)
+            .appendingPathComponent("\(id)@\(maxEdge)")
+        if let cached = await Self.readFile(url) { return cached }
+        guard let full = await loadImage(id) else { return nil }
+        return await Self.makeThumbnail(full, maxEdge: CGFloat(maxEdge), cacheTo: url)
+    }
+
+    private nonisolated static func readFile(_ url: URL) async -> Data? {
+        try? Data(contentsOf: url)
+    }
+
+    /// Decode + downscale to `maxEdge` and JPEG-encode, writing the result to
+    /// `url`. Runs off the main actor. Falls back to the original bytes if the
+    /// image can't be decoded or is already smaller than the target.
+    private nonisolated static func makeThumbnail(
+        _ data: Data, maxEdge: CGFloat, cacheTo url: URL) async -> Data? {
+        #if canImport(UIKit)
+        guard let img = UIImage(data: data) else { return data }
+        let px = CGSize(width: img.size.width * img.scale,
+                        height: img.size.height * img.scale)
+        // Already small enough — cache the original so we don't re-decode it.
+        if max(px.width, px.height) <= maxEdge {
+            try? data.write(to: url, options: .atomic)
+            return data
+        }
+        let scale = maxEdge / max(px.width, px.height)
+        let target = CGSize(width: (px.width * scale).rounded(),
+                            height: (px.height * scale).rounded())
+        let fmt = UIGraphicsImageRendererFormat.default()
+        fmt.scale = 1; fmt.opaque = true
+        let resized = UIGraphicsImageRenderer(size: target, format: fmt)
+            .image { _ in img.draw(in: CGRect(origin: .zero, size: target)) }
+        guard let jpeg = resized.jpegData(compressionQuality: 0.7) else { return data }
+        try? jpeg.write(to: url, options: .atomic)
+        return jpeg
+        #else
+        try? data.write(to: url, options: .atomic)
+        return data
+        #endif
     }
 
     func displayName(for authorID: String) -> String {

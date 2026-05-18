@@ -50,4 +50,16 @@ enum SpaceStore {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
+
+    /// Purgeable cache of downscaled list thumbnails (one entry per blob ×
+    /// target size). Derived from blobs, so it is safe to evict and rebuild;
+    /// kept separate from `blobCacheRoot` so wiping one never touches the
+    /// other. Applies to every Space kind (local blobs still cost a full
+    /// 2048px decode per render without it).
+    static func thumbCacheRoot(for id: String) -> URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let dir = base.appendingPathComponent("FlarkThumbs/\(id)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
 }
