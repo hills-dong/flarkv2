@@ -118,7 +118,7 @@ final class AppModel {
     /// Switch to another local account (data preserved for all accounts).
     func switchAccount(_ id: String) {
         Task {
-            await engine?.stopPolling()
+            await engine?.shutdown()
             engine = nil; repo = nil; clock = nil
             projection = Projection()
             currentSpace = nil
@@ -185,7 +185,9 @@ final class AppModel {
         }
         let clock = HLCClock(nodeID: identity.authorID)
         let repo = SpaceRepository(backend: backend, identity: identity,
-                                   spaceID: cfg.id, blobCache: blobCache)
+                                   spaceID: cfg.id, deviceID: DeviceID.current,
+                                   outboxRoot: SpaceStore.outboxRoot(for: cfg.id),
+                                   blobCache: blobCache)
         let snapshots = SnapshotStore(url: SpaceStore.snapshotURL(for: cfg.id))
         let engine = SyncEngine(repo: repo, clock: clock, identity: identity,
                                 snapshotStore: snapshots)
@@ -211,22 +213,31 @@ final class AppModel {
             await engine.setLocalProfile(authorID: identity.authorID,
                                          displayName: displayName, avatarBlobID: nil)
         }
-        // Windowed: newest topics first so a new member isn't blocked on the
-        // whole log; polling backfills the rest newest→oldest in the bg.
-        await engine.sync(maxNewEvents: 20)
-        await engine.startPolling(interval: cfg.kind == .webdav ? 15 : 3, window: 20)
+        // Windowed: newest files first so a new member isn't blocked on the
+        // whole log. After this opening pull, the engine is idle — fresh
+        // remote events arrive only when the user pull-to-refreshes on the
+        // topic list. Local writes still push automatically via `submit()`.
+        await engine.sync(maxNewFiles: 4)
         self.projection = await engine.projection
     }
 
-    /// Flush the local projection cache (call when the app backgrounds) so the
-    /// next cold start restores instantly instead of re-folding the log.
-    func persistSnapshot() {
-        Task { await engine?.persistSnapshot() }
+    /// Manual fetch — triggered by pull-to-refresh on the topic list. No
+    /// `maxNewFiles` cap: an explicit refresh should converge fully, not
+    /// trickle in over multiple pulls.
+    func refresh() async {
+        await engine?.sync(maxNewFiles: nil)
+    }
+
+    /// Backgrounding the app: drain any locally-queued writes up to WebDAV
+    /// (last chance before suspension, since fetch is manual now) and persist
+    /// the projection cache so the next cold start paints instantly.
+    func persistOnBackground() {
+        Task { await engine?.shutdown() }
     }
 
     func switchSpace(_ cfg: SpaceConfig) {
         Task {
-            await engine?.stopPolling()
+            await engine?.shutdown()
             projection = Projection()
             syncStatus = .idle
             await openSpace(cfg)
@@ -243,7 +254,7 @@ final class AppModel {
         Task {
             let wasCurrent = currentSpace?.id == cfg.id
             if wasCurrent {
-                await engine?.stopPolling()
+                await engine?.shutdown()
                 engine = nil; repo = nil; clock = nil
                 projection = Projection()
                 currentSpace = nil
@@ -259,11 +270,12 @@ final class AppModel {
             case .webdav:
                 Keychain.delete(spacePwAccount(cfg.id))
             }
-            // The projection + blob + thumbnail caches are per-Space
-            // regardless of backend kind.
+            // The projection + blob + thumbnail caches + outbox mirror are
+            // per-Space regardless of backend kind.
             try? FileManager.default.removeItem(at: SpaceStore.snapshotURL(for: cfg.id))
             try? FileManager.default.removeItem(at: SpaceStore.blobCacheRoot(for: cfg.id))
             try? FileManager.default.removeItem(at: SpaceStore.thumbCacheRoot(for: cfg.id))
+            try? FileManager.default.removeItem(at: SpaceStore.outboxRoot(for: cfg.id))
 
             if wasCurrent {
                 if let next = spaces.first {
@@ -435,7 +447,7 @@ final class AppModel {
     /// All accounts' identities & Spaces are kept (in the iCloud Keychain),
     /// so you can switch back, sign in again, or add another user.
     func logout() {
-        Task { await engine?.stopPolling() }
+        Task { await engine?.shutdown() }
         engine = nil; repo = nil; clock = nil
         AccountStore.currentID = nil
         currentAccountID = nil
@@ -490,7 +502,7 @@ final class AppModel {
         accounts = AccountStore.accounts()
 
         Task {
-            await engine?.stopPolling()
+            await engine?.shutdown()
             projection = Projection()
             if let first = spaces.first { await openSpace(first) }
             else { stage = .noSpace }

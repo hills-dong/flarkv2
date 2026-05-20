@@ -14,6 +14,11 @@ final class WebDAVLiveTests: XCTestCase {
         return (url, user, pass)
     }
 
+    private func tempURL(_ tag: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("flark-\(tag)-\(UUID().uuidString)")
+    }
+
     func testLiveWebDAVRoundTripAndConcurrency() async throws {
         guard let (url, user, pass) = creds else {
             throw XCTSkip("Set FLARK_DAV_* env vars to run the live WebDAV smoke")
@@ -23,8 +28,12 @@ final class WebDAVLiveTests: XCTestCase {
         let zhang = DeviceIdentity.generate()
         // Unique sub-space per run so reruns don't collide.
         let spaceID = "smoke-\(Int(Date().timeIntervalSince1970))"
-        let repoA = SpaceRepository(backend: backend, identity: dong, spaceID: spaceID)
-        let repoB = SpaceRepository(backend: backend, identity: zhang, spaceID: spaceID)
+        let outboxA = tempURL("smoke-outbox-a")
+        let outboxB = tempURL("smoke-outbox-b")
+        let repoA = SpaceRepository(backend: backend, identity: dong, spaceID: spaceID,
+                                    deviceID: "dev-a", outboxRoot: outboxA)
+        let repoB = SpaceRepository(backend: backend, identity: zhang, spaceID: spaceID,
+                                    deviceID: "dev-b", outboxRoot: outboxB)
 
         // NOTE: real Space root would be its own WebDAV dir; here we just
         // exercise the protocol against the configured test directory.

@@ -67,11 +67,12 @@ final class SnapshotTests: XCTestCase {
         let store = SnapshotStore(url: url)
 
         let p = sampleProjection()
-        store.save(ProjectionSnapshot(knownEventPaths: ["s1/events/x/1.json"],
+        store.save(ProjectionSnapshot(pathEtags: ["s1/events/x/dev/00000001.json": "etag-v1"],
+                                      profileEtags: ["s1/profiles/x.json": "p-v1"],
                                       maxHLC: HLC(wallMillis: 1, counter: 0, nodeID: "x"),
                                       projection: p))
         let loaded = try XCTUnwrap(store.load())
-        XCTAssertEqual(loaded.knownEventPaths, ["s1/events/x/1.json"])
+        XCTAssertEqual(loaded.pathEtags, ["s1/events/x/dev/00000001.json": "etag-v1"])
         assertEqual(p, loaded.projection)
 
         // A restored projection can keep folding new events identically.
@@ -99,7 +100,7 @@ final class SnapshotTests: XCTestCase {
         XCTAssertNil(store.load())                                  // corrupt
 
         // Tamper the reducer fingerprint → must be treated as absent.
-        var snap = ProjectionSnapshot(knownEventPaths: [], maxHLC: nil,
+        var snap = ProjectionSnapshot(pathEtags: [:], profileEtags: [:], maxHLC: nil,
                                       projection: sampleProjection())
         snap.reducerFingerprint = "stale-fingerprint"
         try JSONEncoder().encode(snap).write(to: url)

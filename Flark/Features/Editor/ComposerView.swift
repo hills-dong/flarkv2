@@ -67,16 +67,19 @@ struct ComposerView: View {
 
                 Spacer(minLength: 0)
 
-                // Liquid Glass toolbar
+                // Liquid Glass toolbar. The send button only appears on iOS;
+                // on macOS the nav-bar "发布" button is the sole send action,
+                // so showing a second big blue circle would be redundant.
                 GlassGroup {
                     HStack(spacing: 14) {
                         Button { commitDraft(); showEmoji = true } label: {
-                            Image(systemName: "face.smiling").font(.title3)
+                            Image(systemName: "face.smiling").font(toolbarIconFont)
                         }
                         PhotosPicker(selection: $photo, matching: .images) {
-                            Image(systemName: "photo").font(.title3)
+                            Image(systemName: "photo").font(toolbarIconFont)
                         }
                         Spacer()
+                        #if !os(macOS)
                         Button {
                             send()
                         } label: {
@@ -86,6 +89,7 @@ struct ComposerView: View {
                                 .foregroundStyle(.white)
                         }
                         .disabled(liveDoc.isEmpty)
+                        #endif
                     }
                     .padding(.horizontal, 18).padding(.vertical, 12)
                     .glassSurface(Capsule())
@@ -137,5 +141,13 @@ struct ComposerView: View {
             if let tid = topicID { model.createReply(topicID: tid, body: doc) }
         }
         dismiss()
+    }
+
+    private var toolbarIconFont: Font {
+        #if os(macOS)
+        .body
+        #else
+        .title3
+        #endif
     }
 }

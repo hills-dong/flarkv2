@@ -33,6 +33,17 @@ enum SpaceStore {
         return url
     }
 
+    /// Local "outbox" mirror of this device's own active event files. The
+    /// repository writes events here first (durable, fast) and then PUTs them
+    /// to the WebDAV backend; on crash, the outbox is the source of truth for
+    /// re-uploading. Never synced (it's strictly a per-install staging area).
+    static func outboxRoot(for id: String) -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let url = base.appendingPathComponent("FlarkOutbox/\(id)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
     /// Local-only projection cache for a Space (never synced to the backend).
     static func snapshotURL(for id: String) -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

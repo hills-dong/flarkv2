@@ -72,6 +72,16 @@ struct IdentitySettingsView: View {
 
                 if model.hasIdentity {
                     Section {
+                        NavigationLink {
+                            LogView()
+                        } label: {
+                            Label("操作日志", systemImage: "doc.text.magnifyingglass")
+                        }
+                    } footer: {
+                        Text("查看本机所有数据操作记录：WebDAV / 本地存储读写、事件追加与文件翻页、同步轮询与 304 跳过。")
+                    }
+
+                    Section {
                         Button { showLogout = true } label: {
                             Label("登出 / 切换身份", systemImage: "rectangle.portrait.and.arrow.right")
                         }

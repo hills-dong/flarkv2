@@ -1,18 +1,36 @@
 import Foundation
 import Security
 
-/// Tiny Keychain wrapper. Holds the Ed25519 device private key and per-Space
-/// WebDAV credentials — never written to disk in the clear.
+/// Tiny secret-store wrapper. Holds the Ed25519 device private key and
+/// per-Space WebDAV credentials — never written to disk in the clear (on iOS).
 ///
-/// `sync: true` marks the item `kSecAttrSynchronizable`, so iCloud Keychain
-/// replicates it to the user's other devices automatically (no iCloud
-/// entitlement needed) — this is how "log in on another device" works (A).
+/// On **iOS** this is the system Keychain. `sync: true` marks the item
+/// `kSecAttrSynchronizable`, so iCloud Keychain replicates it to the user's
+/// other devices automatically (no iCloud entitlement needed) — this is how
+/// "log in on another device" works (A).
+///
+/// On **macOS** the legacy file-based login keychain triggers an ACL
+/// "<App> wants to access X — enter your password" dialog on every read
+/// whenever the app's code signature changes (which it does on every ad-hoc
+/// rebuild, and we can't get a Team ID for a personal-use Mac build). The
+/// data-protection keychain isn't writable for an ad-hoc-signed app either.
+/// So on macOS we keep secrets in a per-user file under Application Support
+/// instead — same on-disk security as the rest of the app's local data
+/// (`FlarkSpaces/`), and zero password prompts.
 enum Keychain {
+    #if os(macOS)
+    @discardableResult
+    static func set(_ data: Data, account: String, sync: Bool = false) -> Bool {
+        FileStore.set(data, account: account)
+    }
+    static func get(_ account: String) -> Data? { FileStore.get(account) }
+    @discardableResult
+    static func delete(_ account: String) -> Bool { FileStore.delete(account) }
+    #else
     private static let service = "app.flark.client"
 
     @discardableResult
     static func set(_ data: Data, account: String, sync: Bool = false) -> Bool {
-        // Clear any existing copy regardless of its sync flag.
         let del: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -28,7 +46,6 @@ enum Keychain {
             kSecValueData as String: data,
             kSecAttrSynchronizable as String: sync
         ]
-        // Synchronizable items can't use ...ThisDeviceOnly accessibility.
         add[kSecAttrAccessible as String] = sync
             ? kSecAttrAccessibleAfterFirstUnlock
             : kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -59,6 +76,7 @@ enum Keychain {
         ]
         return SecItemDelete(q as CFDictionary) == errSecSuccess
     }
+    #endif
 
     static func setString(_ s: String, account: String, sync: Bool = false) {
         set(Data(s.utf8), account: account, sync: sync)
@@ -67,3 +85,55 @@ enum Keychain {
         get(account).flatMap { String(data: $0, encoding: .utf8) }
     }
 }
+
+#if os(macOS)
+/// JSON file under Application Support storing all `Keychain` entries for
+/// this Mac user. Concurrent access from the main app is fine (every call
+/// loads, mutates and writes atomically); we don't share this file with
+/// other processes.
+private enum FileStore {
+    private static let lock = NSLock()
+
+    private static var url: URL = {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory,
+                                               in: .userDomainMask)[0]
+            .appendingPathComponent("Flark", isDirectory: true)
+        try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        return support.appendingPathComponent("secrets.json")
+    }()
+
+    private static func load() -> [String: Data] {
+        guard let raw = try? Data(contentsOf: url),
+              let dict = try? JSONDecoder().decode([String: Data].self, from: raw)
+        else { return [:] }
+        return dict
+    }
+
+    private static func save(_ dict: [String: Data]) -> Bool {
+        guard let encoded = try? JSONEncoder().encode(dict) else { return false }
+        do {
+            try encoded.write(to: url, options: [.atomic])
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    @discardableResult
+    static func set(_ data: Data, account: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        var d = load(); d[account] = data; return save(d)
+    }
+    static func get(_ account: String) -> Data? {
+        lock.lock(); defer { lock.unlock() }
+        return load()[account]
+    }
+    @discardableResult
+    static func delete(_ account: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        var d = load()
+        guard d.removeValue(forKey: account) != nil else { return false }
+        return save(d)
+    }
+}
+#endif
