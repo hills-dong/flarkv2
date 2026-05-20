@@ -29,32 +29,71 @@ public final class LocalFileBackend: StorageBackend, @unchecked Sendable {
         let dir = url(directory)
         guard let items = try? fm.contentsOfDirectory(
             at: dir, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
-        ) else { return [] }
-        return items.map { item in
+        ) else {
+            FlarkLog.shared.record(.info, .storage, "LIST",
+                                   path: directory, detail: "0 entries")
+            return []
+        }
+        let entries = items.map { item -> StorageEntry in
             let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
             let rel = directory.isEmpty ? item.lastPathComponent : "\(directory)/\(item.lastPathComponent)"
             return StorageEntry(path: rel, isDirectory: isDir, etag: isDir ? nil : etag(for: item))
         }
+        FlarkLog.shared.record(.info, .storage, "LIST",
+                               path: directory, detail: "\(entries.count) entries")
+        return entries
     }
 
     public func get(_ path: String) async throws -> (data: Data, etag: String?) {
         let u = url(path)
-        guard let data = fm.contents(atPath: u.path) else { throw StorageError.notFound }
+        guard let data = fm.contents(atPath: u.path) else {
+            FlarkLog.shared.record(.warn, .storage, "GET",
+                                   path: path, detail: "not found")
+            throw StorageError.notFound
+        }
+        FlarkLog.shared.record(.info, .storage, "GET",
+                               path: path, bytes: data.count)
         return (data, etag(for: u))
+    }
+
+    /// Conditional GET against the local mtime/size fingerprint. Lets tests
+    /// exercise the same 304 path as the WebDAV backend.
+    public func get(_ path: String, ifNoneMatch knownEtag: String?) async throws -> (data: Data, etag: String?)? {
+        let u = url(path)
+        let current = etag(for: u)
+        if let known = knownEtag, current == known {
+            FlarkLog.shared.record(.info, .storage, "GET",
+                                   path: path, detail: "304 not modified")
+            return nil
+        }
+        guard let data = fm.contents(atPath: u.path) else {
+            FlarkLog.shared.record(.warn, .storage, "GET",
+                                   path: path, detail: "not found")
+            throw StorageError.notFound
+        }
+        FlarkLog.shared.record(.info, .storage, "GET",
+                               path: path, bytes: data.count)
+        return (data, current)
     }
 
     public func put(_ path: String, data: Data, precondition: WritePrecondition) async throws {
         let u = url(path)
         switch precondition {
         case .createOnly where fm.fileExists(atPath: u.path):
+            FlarkLog.shared.record(.info, .storage, "PUT",
+                                   path: path, detail: "createOnly skipped (exists)")
             throw StorageError.preconditionFailed
         case .ifMatch(let tag) where etag(for: u) != tag:
+            FlarkLog.shared.record(.warn, .storage, "PUT",
+                                   path: path, detail: "ifMatch failed")
             throw StorageError.preconditionFailed
         default: break
         }
         try fm.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
         // Atomic replace so a half-written file is never observed by readers.
         try data.write(to: u, options: .atomic)
+        FlarkLog.shared.record(.info, .storage, "PUT",
+                               path: path, bytes: data.count)
     }
 
     public func makeDirectory(_ path: String) async throws {
@@ -69,5 +108,6 @@ public final class LocalFileBackend: StorageBackend, @unchecked Sendable {
         let u = url(path)
         guard fm.fileExists(atPath: u.path) else { return }   // idempotent
         try fm.removeItem(at: u)
+        FlarkLog.shared.record(.info, .storage, "DELETE", path: path)
     }
 }

@@ -118,7 +118,7 @@ final class AppModel {
     /// Switch to another local account (data preserved for all accounts).
     func switchAccount(_ id: String) {
         Task {
-            await engine?.stopPolling()
+            await engine?.shutdown()
             engine = nil; repo = nil; clock = nil
             projection = Projection()
             currentSpace = nil
@@ -171,6 +171,9 @@ final class AppModel {
     func openSpace(_ cfg: SpaceConfig) async {
         guard let identity else { return }
         let backend: StorageBackend
+        // Local backends already keep blobs on disk; only the network-backed
+        // (WebDAV) Space benefits from a read/write-through blob cache.
+        var blobCache: BlobCache?
         switch cfg.kind {
         case .local:
             backend = LocalFileBackend(root: SpaceStore.localRoot(for: cfg.id))
@@ -178,9 +181,13 @@ final class AppModel {
             guard let u = URL(string: cfg.webdavURL ?? "") else { return }
             let pw = Keychain.getString(spacePwAccount(cfg.id)) ?? ""
             backend = WebDAVBackend(baseURL: u, username: cfg.webdavUser ?? "", password: pw)
+            blobCache = BlobCache(directory: SpaceStore.blobCacheRoot(for: cfg.id))
         }
         let clock = HLCClock(nodeID: identity.authorID)
-        let repo = SpaceRepository(backend: backend, identity: identity, spaceID: cfg.id)
+        let repo = SpaceRepository(backend: backend, identity: identity,
+                                   spaceID: cfg.id, deviceID: DeviceID.current,
+                                   outboxRoot: SpaceStore.outboxRoot(for: cfg.id),
+                                   blobCache: blobCache)
         let snapshots = SnapshotStore(url: SpaceStore.snapshotURL(for: cfg.id))
         let engine = SyncEngine(repo: repo, clock: clock, identity: identity,
                                 snapshotStore: snapshots)
@@ -206,22 +213,31 @@ final class AppModel {
             await engine.setLocalProfile(authorID: identity.authorID,
                                          displayName: displayName, avatarBlobID: nil)
         }
-        // Windowed: newest topics first so a new member isn't blocked on the
-        // whole log; polling backfills the rest newest→oldest in the bg.
-        await engine.sync(maxNewEvents: 20)
-        await engine.startPolling(interval: cfg.kind == .webdav ? 15 : 3, window: 20)
+        // Windowed: newest files first so a new member isn't blocked on the
+        // whole log. After this opening pull, the engine is idle — fresh
+        // remote events arrive only when the user pull-to-refreshes on the
+        // topic list. Local writes still push automatically via `submit()`.
+        await engine.sync(maxNewFiles: 4)
         self.projection = await engine.projection
     }
 
-    /// Flush the local projection cache (call when the app backgrounds) so the
-    /// next cold start restores instantly instead of re-folding the log.
-    func persistSnapshot() {
-        Task { await engine?.persistSnapshot() }
+    /// Manual fetch — triggered by pull-to-refresh on the topic list. No
+    /// `maxNewFiles` cap: an explicit refresh should converge fully, not
+    /// trickle in over multiple pulls.
+    func refresh() async {
+        await engine?.sync(maxNewFiles: nil)
+    }
+
+    /// Backgrounding the app: drain any locally-queued writes up to WebDAV
+    /// (last chance before suspension, since fetch is manual now) and persist
+    /// the projection cache so the next cold start paints instantly.
+    func persistOnBackground() {
+        Task { await engine?.shutdown() }
     }
 
     func switchSpace(_ cfg: SpaceConfig) {
         Task {
-            await engine?.stopPolling()
+            await engine?.shutdown()
             projection = Projection()
             syncStatus = .idle
             await openSpace(cfg)
@@ -238,7 +254,7 @@ final class AppModel {
         Task {
             let wasCurrent = currentSpace?.id == cfg.id
             if wasCurrent {
-                await engine?.stopPolling()
+                await engine?.shutdown()
                 engine = nil; repo = nil; clock = nil
                 projection = Projection()
                 currentSpace = nil
@@ -254,8 +270,12 @@ final class AppModel {
             case .webdav:
                 Keychain.delete(spacePwAccount(cfg.id))
             }
-            // The projection cache is per-Space regardless of backend kind.
+            // The projection + blob + thumbnail caches + outbox mirror are
+            // per-Space regardless of backend kind.
             try? FileManager.default.removeItem(at: SpaceStore.snapshotURL(for: cfg.id))
+            try? FileManager.default.removeItem(at: SpaceStore.blobCacheRoot(for: cfg.id))
+            try? FileManager.default.removeItem(at: SpaceStore.thumbCacheRoot(for: cfg.id))
+            try? FileManager.default.removeItem(at: SpaceStore.outboxRoot(for: cfg.id))
 
             if wasCurrent {
                 if let next = spaces.first {
@@ -363,6 +383,57 @@ final class AppModel {
         try? await repo?.getBlob(id)
     }
 
+    /// Like `loadImage`, but returns a downscaled JPEG sized for list rows and
+    /// memoizes it on disk. The list shows many images at ≤180pt; decoding the
+    /// full ~2048px blob for each is needless CPU + memory. The full blob is
+    /// still fetched once (and cached by `BlobCache`); the thumbnail is then
+    /// derived, cached, and reused on every subsequent appearance.
+    ///
+    /// The fetch hops to the repo actor; decode/resize/IO run off the main
+    /// actor (the helpers below are `nonisolated`) so scrolling stays smooth.
+    func loadThumbnail(_ id: String, maxEdge: Int = 900) async -> Data? {
+        guard let spaceID = currentSpace?.id else { return await loadImage(id) }
+        let url = SpaceStore.thumbCacheRoot(for: spaceID)
+            .appendingPathComponent("\(id)@\(maxEdge)")
+        if let cached = await Self.readFile(url) { return cached }
+        guard let full = await loadImage(id) else { return nil }
+        return await Self.makeThumbnail(full, maxEdge: CGFloat(maxEdge), cacheTo: url)
+    }
+
+    private nonisolated static func readFile(_ url: URL) async -> Data? {
+        try? Data(contentsOf: url)
+    }
+
+    /// Decode + downscale to `maxEdge` and JPEG-encode, writing the result to
+    /// `url`. Runs off the main actor. Falls back to the original bytes if the
+    /// image can't be decoded or is already smaller than the target.
+    private nonisolated static func makeThumbnail(
+        _ data: Data, maxEdge: CGFloat, cacheTo url: URL) async -> Data? {
+        #if canImport(UIKit)
+        guard let img = UIImage(data: data) else { return data }
+        let px = CGSize(width: img.size.width * img.scale,
+                        height: img.size.height * img.scale)
+        // Already small enough — cache the original so we don't re-decode it.
+        if max(px.width, px.height) <= maxEdge {
+            try? data.write(to: url, options: .atomic)
+            return data
+        }
+        let scale = maxEdge / max(px.width, px.height)
+        let target = CGSize(width: (px.width * scale).rounded(),
+                            height: (px.height * scale).rounded())
+        let fmt = UIGraphicsImageRendererFormat.default()
+        fmt.scale = 1; fmt.opaque = true
+        let resized = UIGraphicsImageRenderer(size: target, format: fmt)
+            .image { _ in img.draw(in: CGRect(origin: .zero, size: target)) }
+        guard let jpeg = resized.jpegData(compressionQuality: 0.7) else { return data }
+        try? jpeg.write(to: url, options: .atomic)
+        return jpeg
+        #else
+        try? data.write(to: url, options: .atomic)
+        return data
+        #endif
+    }
+
     func displayName(for authorID: String) -> String {
         projection.displayName(authorID)
     }
@@ -376,7 +447,7 @@ final class AppModel {
     /// All accounts' identities & Spaces are kept (in the iCloud Keychain),
     /// so you can switch back, sign in again, or add another user.
     func logout() {
-        Task { await engine?.stopPolling() }
+        Task { await engine?.shutdown() }
         engine = nil; repo = nil; clock = nil
         AccountStore.currentID = nil
         currentAccountID = nil
@@ -431,7 +502,7 @@ final class AppModel {
         accounts = AccountStore.accounts()
 
         Task {
-            await engine?.stopPolling()
+            await engine?.shutdown()
             projection = Projection()
             if let first = spaces.first { await openSpace(first) }
             else { stage = .noSpace }

@@ -41,19 +41,37 @@ struct SpaceSetupView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
 
-                Button(action: connect) {
-                    Text("连接并进入").font(.headline)
-                        .frame(maxWidth: .infinity).padding(16)
-                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .foregroundStyle(.white)
-                }
-                .disabled(!canConnect)
-                .padding(.top, 6)
+                connectButton
+                    .padding(.top, 6)
             }
             .padding(24)
             .frame(maxWidth: 560)
+            #if os(macOS)
+            .frame(maxWidth: .infinity)  // center the 560pt form in the window
+            #endif
         }
         .background(Color.platformGrouped)
+    }
+
+    @ViewBuilder private var connectButton: some View {
+        #if os(macOS)
+        // Native macOS prominent button: ~32pt tall, system tinted, looks at
+        // home in a window instead of the chunky iOS pill.
+        Button("连接并进入", action: connect)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .keyboardShortcut(.defaultAction)
+            .disabled(!canConnect)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        #else
+        Button(action: connect) {
+            Text("连接并进入").font(.headline)
+                .frame(maxWidth: .infinity).padding(16)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .foregroundStyle(.white)
+        }
+        .disabled(!canConnect)
+        #endif
     }
 
     private var canConnect: Bool {
@@ -85,6 +103,7 @@ struct SpaceSetupView: View {
                 .padding(15)
                 .background(Color.platformBackground,
                             in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .modifier(FieldOutlineMac())
         }
     }
 
@@ -96,7 +115,26 @@ struct SpaceSetupView: View {
                 .padding(15)
                 .background(Color.platformBackground,
                             in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .modifier(FieldOutlineMac())
         }
+    }
+}
+
+/// macOS-only hairline outline around the otherwise borderless field, since
+/// `controlBackgroundColor` and `windowBackgroundColor` are both white in
+/// light mode — without a stroke the field is indistinguishable from the
+/// page. No-op on iOS where `platformBackground` is already darker than
+/// `platformGrouped`.
+private struct FieldOutlineMac: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content.overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+        )
+        #else
+        content
+        #endif
     }
 }
 

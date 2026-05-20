@@ -14,7 +14,7 @@ struct TopicListView: View {
             Group {
                 if topics.isEmpty {
                     ContentUnavailableView("还没有话题", systemImage: "bubble.left.and.bubble.right",
-                                           description: Text("点右下角 + 创建第一个话题"))
+                                           description: Text(emptyHint))
                 } else {
                     List(selection: $selection) {
                         ForEach(topics) { topic in
@@ -32,22 +32,42 @@ struct TopicListView: View {
                         }
                     }
                     .listStyle(.plain)
+                    .refreshable { await model.refresh() }
                 }
             }
+            // On iOS use the grouped page color so cards stand out against
+            // the gray sidebar; on macOS let the sidebar's translucent
+            // material show through (painting opaque white over it made the
+            // sidebar look like an unrelated white panel).
+            #if !os(macOS)
             .background(Color.platformGrouped)
+            #endif
 
+            #if !os(macOS)
+            // iOS: floating action button. On macOS the "+" lives in the
+            // toolbar (added below) which is the platform idiom.
             Button { composing = true } label: {
                 Image(systemName: "plus").font(.title2.weight(.semibold))
                     .frame(width: 60, height: 60)
             }
             .glassButton(Circle())
             .padding(24)
+            #endif
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             SyncStatusBar(status: model.syncStatus)
         }
         .navigationTitle(model.currentSpace?.name ?? "话题")
         .toolbar {
+            #if os(macOS)
+            ToolbarItem(placement: .primaryAction) {
+                Button { composing = true } label: { Image(systemName: "plus") }
+                    .help("新建话题（⇧⌘N）")
+                    // ⌘N collides with WindowGroup's default "New Window";
+                    // ⇧⌘N is free.
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+            }
+            #endif
             ToolbarItem(placement: .primaryAction) {
                 Button { showSpaces = true } label: { Image(systemName: "rectangle.stack") }
             }
@@ -58,6 +78,14 @@ struct TopicListView: View {
         .sheet(isPresented: $composing) { ComposerView(mode: .topic) }
         .sheet(isPresented: $showSpaces) { SpaceListView() }
         .sheet(isPresented: $showIdentity) { IdentitySettingsView() }
+    }
+
+    private var emptyHint: String {
+        #if os(macOS)
+        "点右上角 + 创建第一个话题（⇧⌘N）"
+        #else
+        "点右下角 + 创建第一个话题"
+        #endif
     }
 }
 
@@ -78,7 +106,7 @@ struct TopicCard: View {
                 Spacer()
             }
             if !topic.preview.isEmpty {
-                Text(topic.preview)
+                Text(renderedPreview)
                     .font(.body)
                     .lineLimit(4)
             }
@@ -101,6 +129,24 @@ struct TopicCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
         .contentShape(Rectangle())
+    }
+
+    /// On macOS, swap `[u_xxx]` emoji-id placeholders left in
+    /// `topic.preview` for their Unicode glyph so the card reads naturally.
+    /// iOS behavior is unchanged.
+    private var renderedPreview: String {
+        #if os(macOS)
+        var out = topic.preview
+        // Bracketed IDs are the only place `[` appears in preview text.
+        while let range = out.range(of: #"\[u_[A-Za-z0-9_]+\]"#, options: .regularExpression) {
+            let id = String(out[range].dropFirst().dropLast())
+            let glyph = model.emoji.item(id)?.unicode ?? "🙂"
+            out.replaceSubrange(range, with: glyph)
+        }
+        return out
+        #else
+        return topic.preview
+        #endif
     }
 }
 
@@ -167,7 +213,7 @@ struct TopicImageThumbnail: View {
             }
             .clipped()
             .allowsHitTesting(false)
-            .task(id: blobID) { data = await model.loadImage(blobID) }
+            .task(id: blobID) { data = await model.loadThumbnail(blobID) }
     }
 
     private func platformImage(_ d: Data) -> Image? {

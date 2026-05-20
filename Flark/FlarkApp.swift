@@ -13,7 +13,10 @@ struct FlarkApp: App {
                 .tint(.accentColor)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { model.persistSnapshot() }
+            // Drain pending writes + persist projection cache before suspend.
+            // With manual-only pull, this is the last guaranteed chance to
+            // push any locally-staged events to WebDAV.
+            if phase != .active { model.persistOnBackground() }
         }
         #if os(macOS)
         .defaultSize(width: 1000, height: 760)

@@ -5,18 +5,28 @@ import XCTest
 /// server, shared folder" scenario) must converge through the event log.
 final class StorageSyncTests: XCTestCase {
 
+    private func tempURL(_ tag: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("flark-\(tag)-\(UUID().uuidString)")
+    }
+
     func testTwoDevicesConvergeViaSharedFolder() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("flark-test-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = tempURL("backend")
+        let outboxA = tempURL("outboxA")
+        let outboxB = tempURL("outboxB")
+        defer { for u in [root, outboxA, outboxB] {
+            try? FileManager.default.removeItem(at: u)
+        } }
 
         let backendA = LocalFileBackend(root: root)
         let backendB = LocalFileBackend(root: root)   // same folder, other device
         let dong = DeviceIdentity.generate()
         let zhang = DeviceIdentity.generate()
 
-        let repoA = SpaceRepository(backend: backendA, identity: dong, spaceID: "s1")
-        let repoB = SpaceRepository(backend: backendB, identity: zhang, spaceID: "s1")
+        let repoA = SpaceRepository(backend: backendA, identity: dong, spaceID: "s1",
+                                    deviceID: "dev-dong", outboxRoot: outboxA)
+        let repoB = SpaceRepository(backend: backendB, identity: zhang, spaceID: "s1",
+                                    deviceID: "dev-zhang", outboxRoot: outboxB)
         let engineA = SyncEngine(repo: repoA, clock: HLCClock(nodeID: dong.authorID),
                                  identity: dong)
         let engineB = SyncEngine(repo: repoB, clock: HLCClock(nodeID: zhang.authorID),
@@ -58,16 +68,27 @@ final class StorageSyncTests: XCTestCase {
         XCTAssertEqual(String(data: fetched, encoding: .utf8), "png-bytes")
     }
 
-    /// Wraps a backend and counts event-file GETs so tests can prove the
-    /// snapshot/windowing actually eliminates redundant downloads.
+    /// Wraps a backend and counts event-file GETs (both unconditional and
+    /// conditional-with-body) so tests can prove conditional-GET / etag
+    /// caching actually skips the redundant downloads.
     actor CountingBackend: StorageBackend {
         let wrapped: StorageBackend
-        private(set) var eventGets = 0
+        private(set) var eventBodyGets = 0   // returned a body (200)
+        private(set) var event304s = 0       // conditional GET returned nil
+        private(set) var profileBodyGets = 0
         init(_ w: StorageBackend) { wrapped = w }
         func list(_ d: String) async throws -> [StorageEntry] { try await wrapped.list(d) }
         func get(_ p: String) async throws -> (data: Data, etag: String?) {
-            if p.contains("/events/") { eventGets += 1 }
+            if p.contains("/events/") { eventBodyGets += 1 }
+            if p.contains("/profiles/") { profileBodyGets += 1 }
             return try await wrapped.get(p)
+        }
+        func get(_ p: String, ifNoneMatch knownEtag: String?) async throws -> (data: Data, etag: String?)? {
+            let r = try await wrapped.get(p, ifNoneMatch: knownEtag)
+            if p.contains("/events/") {
+                if r == nil { event304s += 1 } else { eventBodyGets += 1 }
+            }
+            return r
         }
         func put(_ p: String, data: Data, precondition: WritePrecondition) async throws {
             try await wrapped.put(p, data: data, precondition: precondition)
@@ -77,92 +98,145 @@ final class StorageSyncTests: XCTestCase {
         func delete(_ p: String) async throws { try await wrapped.delete(p) }
     }
 
-    /// Deterministically write `n` topic-create events (strictly increasing
-    /// HLC) straight to storage — bypasses the engine's async flush so the
-    /// files are guaranteed on disk before we assert.
+    /// Write `n` topic-create events through the repository so they land in
+    /// the new layout (active file, rotates as configured) instead of going
+    /// through the engine's pendingEvents queue.
     private func seedTopics(_ n: Int, into repo: SpaceRepository,
                             author: DeviceIdentity) async throws {
         var ms: Int64 = 1_000
         let clock = HLCClock(nodeID: author.authorID, now: { ms })
         for i in 0..<n {
             ms += 1                                   // strictly newer each time
-            var e = Event(hlc: clock.send(), authorID: author.authorID,
+            let e = Event(hlc: clock.send(), authorID: author.authorID,
                           publicKey: author.publicKeyData, spaceID: "s1",
                           payload: .topicCreate(topicID: "t\(i)",
                                                 body: ContentDocument(text: "x")))
-            try e.sign(with: author)
+            // `append` signs internally, so no need to pre-sign here.
             try await repo.append(e)
         }
     }
 
-    /// A new device restoring a snapshot must not re-download events it has
-    /// already folded — the cold-start round-trip cliff is gone.
-    func testSnapshotSkipsKnownEventDownloads() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("flark-snap-\(UUID().uuidString)")
-        let snapURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("snap-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: root)
-                try? FileManager.default.removeItem(at: snapURL) }
+    /// A new device restoring a snapshot must not re-fetch event-file bodies
+    /// it has already folded — conditional GET on each unchanged path comes
+    /// back as 304 so steady-state polling never re-downloads sealed history.
+    func testSnapshotSkipsUnchangedFiles() async throws {
+        let root = tempURL("snap")
+        let outbox = tempURL("snap-outbox")
+        let snapURL = tempURL("snap-cache").appendingPathExtension("json")
+        defer { for u in [root, outbox, snapURL] {
+            try? FileManager.default.removeItem(at: u)
+        } }
 
         let author = DeviceIdentity.generate()
+        // Rotate every 3 events so 8 topics produce 3 files (seq 1: 3, seq 2:
+        // 3, seq 3: 2). Multiple files exercise the per-path etag map and
+        // make the assertion robust against any single-file edge case.
         let repoW = SpaceRepository(backend: LocalFileBackend(root: root),
-                                    identity: author, spaceID: "s1")
+                                    identity: author, spaceID: "s1",
+                                    deviceID: "dev-w", outboxRoot: outbox,
+                                    rotationEventCount: 3)
         try await repoW.bootstrap(spaceName: "T")
         try await seedTopics(8, into: repoW, author: author)
 
         let store = SnapshotStore(url: snapURL)
         let countA = CountingBackend(LocalFileBackend(root: root))
-        let repoA = SpaceRepository(backend: countA, identity: author, spaceID: "s1")
+        let repoA = SpaceRepository(backend: countA, identity: author, spaceID: "s1",
+                                    deviceID: "dev-a-reader", outboxRoot: tempURL("readerA"))
         let engineA = SyncEngine(repo: repoA, clock: HLCClock(nodeID: author.authorID),
                                  identity: author, snapshotStore: store)
         await engineA.restoreSnapshot()
-        await engineA.sync()                      // first run: must read the 8 files
-        await engineA.stopPolling()               // persists the snapshot
-        let getsA = await countA.eventGets
-        XCTAssertEqual(getsA, 8)
+        await engineA.sync()                      // first run: must read every file
+        await engineA.shutdown()                  // drains + persists the snapshot
+        let bodiesA = await countA.eventBodyGets
+        XCTAssertEqual(bodiesA, 3)                // 3 files, one body per file
 
-        // Fresh engine, same snapshot: restore + sync downloads zero events.
+        // Fresh engine, same snapshot: restore + sync downloads zero bodies;
+        // conditional GET returns 304 for every still-current file.
         let countB = CountingBackend(LocalFileBackend(root: root))
-        let repoB = SpaceRepository(backend: countB, identity: author, spaceID: "s1")
+        let repoB = SpaceRepository(backend: countB, identity: author, spaceID: "s1",
+                                    deviceID: "dev-b-reader", outboxRoot: tempURL("readerB"))
         let engineB = SyncEngine(repo: repoB, clock: HLCClock(nodeID: author.authorID),
                                  identity: author, snapshotStore: store)
         await engineB.restoreSnapshot()
         let p0 = await engineB.projection
         XCTAssertEqual(p0.topics.count, 8)        // painted instantly from cache
         await engineB.sync()
-        let getsB = await countB.eventGets
-        XCTAssertEqual(getsB, 0)                  // no redundant re-download
+        let bodiesB = await countB.eventBodyGets
+        XCTAssertEqual(bodiesB, 0)                // no body re-downloaded
         let pB = await engineB.projection
         XCTAssertEqual(pB.topics.count, 8)
     }
 
-    /// Windowed sync fetches only the newest N events up front; the rest
-    /// backfill over subsequent rounds and the projection still converges.
-    func testWindowedSyncBackfillsNewestFirst() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("flark-win-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
-
+    /// Profile files are tiny but get re-fetched on every sync round in v1 —
+    /// once their listing-etag is cached, subsequent rounds must skip the GET
+    /// entirely (no `If-None-Match` either, just trust the PROPFIND etag).
+    func testProfileEtagSkipsRedundantGets() async throws {
+        let root = tempURL("prof")
+        let outbox = tempURL("prof-outbox")
+        defer { for u in [root, outbox] {
+            try? FileManager.default.removeItem(at: u)
+        } }
         let author = DeviceIdentity.generate()
         let repoW = SpaceRepository(backend: LocalFileBackend(root: root),
-                                    identity: author, spaceID: "s1")
+                                    identity: author, spaceID: "s1",
+                                    deviceID: "dev-w", outboxRoot: outbox)
+        try await repoW.bootstrap(spaceName: "T")
+        try await repoW.writeProfile(displayName: "Alice", avatarBlobID: nil)
+
+        let count = CountingBackend(LocalFileBackend(root: root))
+        let reader = DeviceIdentity.generate()
+        let repoR = SpaceRepository(backend: count, identity: reader, spaceID: "s1",
+                                    deviceID: "dev-r", outboxRoot: tempURL("readerR"))
+        let engine = SyncEngine(repo: repoR, clock: HLCClock(nodeID: reader.authorID),
+                                identity: reader)
+        await engine.sync()                       // first round: 1 GET for the profile
+        var n = await count.profileBodyGets
+        XCTAssertEqual(n, 1)
+        await engine.sync()                       // second round: etag matches, 0 GETs
+        n = await count.profileBodyGets
+        XCTAssertEqual(n, 1)
+
+        // Mutating the profile bumps its mtime → etag changes → re-fetch.
+        try await repoW.writeProfile(displayName: "Alice II", avatarBlobID: nil)
+        await engine.sync()
+        n = await count.profileBodyGets
+        XCTAssertEqual(n, 2)
+        let p = await engine.projection
+        XCTAssertEqual(p.profiles[author.authorID]?.displayName, "Alice II")
+    }
+
+    /// Windowed sync fetches only the newest N files up front; the rest
+    /// backfill over subsequent rounds and the projection still converges.
+    func testWindowedSyncBackfillsNewestFirst() async throws {
+        let root = tempURL("win")
+        let outbox = tempURL("win-outbox")
+        defer { try? FileManager.default.removeItem(at: root)
+                try? FileManager.default.removeItem(at: outbox) }
+
+        let author = DeviceIdentity.generate()
+        // Tiny rotation cap → 12 topics ⇒ 12 files (one per event) so the
+        // window cap of 5 unambiguously caps file fetches.
+        let repoW = SpaceRepository(backend: LocalFileBackend(root: root),
+                                    identity: author, spaceID: "s1",
+                                    deviceID: "dev-w", outboxRoot: outbox,
+                                    rotationEventCount: 1)
         try await repoW.bootstrap(spaceName: "T")
         try await seedTopics(12, into: repoW, author: author)
 
         let count = CountingBackend(LocalFileBackend(root: root))
-        let repo = SpaceRepository(backend: count, identity: author, spaceID: "s1")
+        let repo = SpaceRepository(backend: count, identity: author, spaceID: "s1",
+                                   deviceID: "dev-reader", outboxRoot: tempURL("reader"))
         let engine = SyncEngine(repo: repo, clock: HLCClock(nodeID: author.authorID),
                                 identity: author)
 
-        await engine.sync(maxNewEvents: 5)        // newest 5 only
+        await engine.sync(maxNewFiles: 5)         // newest 5 files only
         let p1 = await engine.projection
         XCTAssertEqual(p1.topics.count, 5)
-        let gets1 = await count.eventGets
-        XCTAssertEqual(gets1, 5)
+        let bodies1 = await count.eventBodyGets
+        XCTAssertEqual(bodies1, 5)
         let hasMore = await engine.hasUnsyncedHistory
         XCTAssertTrue(hasMore)
-        // Newest-first: t11..t7 (highest HLC) loaded before older ones.
+        // Newest-first: t11..t7 (highest seq) loaded before older ones.
         XCTAssertNotNil(p1.topics["t11"])
         XCTAssertNil(p1.topics["t0"])
 
@@ -173,81 +247,95 @@ final class StorageSyncTests: XCTestCase {
         }
         let pN = await engine.projection
         XCTAssertEqual(pN.topics.count, 12)       // fully converged
-        let getsN = await count.eventGets
-        XCTAssertEqual(getsN, 12)                 // each event fetched exactly once
+        let bodiesN = await count.eventBodyGets
+        XCTAssertEqual(bodiesN, 12)               // each file fetched exactly once
     }
 
-    /// Sealing packs the author's oldest singles into one immutable segment
-    /// and deletes them, so a fresh device folds the whole history from a
-    /// handful of files instead of thousands — and still converges exactly.
-    func testSealingCollapsesHistoryAndConverges() async throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("flark-seal-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
+    /// The active file's seq advances once the configured event cap is hit;
+    /// the old file remains immutable on the backend and is read once on
+    /// cold-start (it never changes its etag again).
+    func testActiveFileRotation() async throws {
+        let root = tempURL("rot")
+        let outbox = tempURL("rot-outbox")
+        defer { try? FileManager.default.removeItem(at: root)
+                try? FileManager.default.removeItem(at: outbox) }
 
-        // `author` writes the history; `viewer` is a different identity that
-        // only reads it. Sealing is per-own-author, so the viewer engines
-        // never auto-seal `author`'s dir — keeping GET counts deterministic
-        // while we drive sealing explicitly via `repoW`.
         let author = DeviceIdentity.generate()
-        let viewer = DeviceIdentity.generate()
-        let repoW = SpaceRepository(backend: LocalFileBackend(root: root),
-                                    identity: author, spaceID: "s1")
-        try await repoW.bootstrap(spaceName: "T")
-        try await seedTopics(250, into: repoW, author: author)
+        let repo = SpaceRepository(backend: LocalFileBackend(root: root),
+                                   identity: author, spaceID: "s1",
+                                   deviceID: "dev-w", outboxRoot: outbox,
+                                   rotationEventCount: 4)
+        try await repo.bootstrap(spaceName: "T")
+        try await seedTopics(10, into: repo, author: author)
 
-        // A viewer engine that folds all 250 singles before sealing.
-        let snapURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("seal-snap-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: snapURL) }
-        let store = SnapshotStore(url: snapURL)
-        let count = CountingBackend(LocalFileBackend(root: root))
-        let repo = SpaceRepository(backend: count, identity: viewer, spaceID: "s1")
-        let engine = SyncEngine(repo: repo, clock: HLCClock(nodeID: viewer.authorID),
-                                identity: viewer, snapshotStore: store)
-        await engine.sync()
-        let g1 = await count.eventGets
-        XCTAssertEqual(g1, 250)                   // folded every single once
+        // Layout: rotation=4 → files 1 (4 events), 2 (4), 3 (2). Each file
+        // lives at events/<authorID>/<deviceID>/<paddedSeq>.json.
+        let listing = try await repo.listEventEntries().sorted { $0.path < $1.path }
+        XCTAssertEqual(listing.count, 3)
+        XCTAssertTrue(listing[0].path.hasSuffix("/00000001.json"))
+        XCTAssertTrue(listing[1].path.hasSuffix("/00000002.json"))
+        XCTAssertTrue(listing[2].path.hasSuffix("/00000003.json"))
+        // The first two seqs are full, the third holds the leftover tail.
+        let s1 = try await repo.loadEvents(at: listing[0].path)
+        let s2 = try await repo.loadEvents(at: listing[1].path)
+        let s3 = try await repo.loadEvents(at: listing[2].path)
+        XCTAssertEqual(s1.count, 4)
+        XCTAssertEqual(s2.count, 4)
+        XCTAssertEqual(s3.count, 2)
+    }
 
-        // One call seals exactly one batch (oldest 100, HLC order).
-        let firstSealed = try await repoW.sealOwnHistory()
-        XCTAssertEqual(firstSealed, SpaceRepository.segmentBatchSize)  // 100
+    /// Two physical devices that share an authorID (iCloud-Keychain identity
+    /// sync) each write under their own deviceID subtree. The single-writer
+    /// guarantee is per directory, so neither device ever stomps on the
+    /// other's file — and the projection still merges to one state.
+    func testSameAuthorMultipleDevicesConverge() async throws {
+        let root = tempURL("multidev")
+        let outboxA = tempURL("multidev-a")
+        let outboxB = tempURL("multidev-b")
+        defer { for u in [root, outboxA, outboxB] {
+            try? FileManager.default.removeItem(at: u)
+        } }
 
-        // Drain the rest: 250 → two 100-event segments + 50 loose singles
-        // (< a batch, so they stay loose by design).
-        while try await repoW.sealOwnHistory() > 0 {}
-        let dir = "s1/events/\(author.authorID)"
-        let after = try await LocalFileBackend(root: root).list(dir)
-            .filter { !$0.isDirectory }
-        XCTAssertEqual(after.filter { SpaceRepository.isSegment($0.path) }.count, 2)
-        XCTAssertEqual(after.filter { !SpaceRepository.isSegment($0.path) }.count, 50)
+        let identity = DeviceIdentity.generate()   // same key on both "devices"
+        let repoA = SpaceRepository(backend: LocalFileBackend(root: root),
+                                    identity: identity, spaceID: "s1",
+                                    deviceID: "iphone", outboxRoot: outboxA)
+        let repoB = SpaceRepository(backend: LocalFileBackend(root: root),
+                                    identity: identity, spaceID: "s1",
+                                    deviceID: "ipad", outboxRoot: outboxB)
+        try await repoA.bootstrap(spaceName: "T")
 
-        // Idempotent: < a batch left, nothing more to seal.
-        let leftover = try await repoW.sealOwnHistory()
-        XCTAssertEqual(leftover, 0)
+        let clockA = HLCClock(nodeID: identity.authorID, now: { 1_000 })
+        let clockB = HLCClock(nodeID: identity.authorID, now: { 1_010 })
+        let eA = Event(hlc: clockA.send(), authorID: identity.authorID,
+                       publicKey: identity.publicKeyData, spaceID: "s1",
+                       payload: .topicCreate(topicID: "from-iphone",
+                                             body: ContentDocument(text: "a")))
+        let eB = Event(hlc: clockB.send(), authorID: identity.authorID,
+                       publicKey: identity.publicKeyData, spaceID: "s1",
+                       payload: .topicCreate(topicID: "from-ipad",
+                                             body: ContentDocument(text: "b")))
+        try await repoA.append(eA)
+        try await repoB.append(eB)
 
-        // Next sync: folds the 2 new segments (re-fold is idempotent) and
-        // reclaims the 200 now-dead single paths from knownEventPaths.
+        // Listings see both subtrees side by side.
+        let entries = try await repoA.listEventEntries()
+        XCTAssertEqual(entries.count, 2)
+        XCTAssertTrue(entries.contains { $0.path.contains("/iphone/") })
+        XCTAssertTrue(entries.contains { $0.path.contains("/ipad/") })
+
+        // A reader (third identity) folds both files into one Projection.
+        let reader = DeviceIdentity.generate()
+        let repoR = SpaceRepository(backend: LocalFileBackend(root: root),
+                                    identity: reader, spaceID: "s1",
+                                    deviceID: "reader-dev",
+                                    outboxRoot: tempURL("reader"))
+        let engine = SyncEngine(repo: repoR, clock: HLCClock(nodeID: reader.authorID),
+                                identity: reader)
         await engine.sync()
         let p = await engine.projection
-        XCTAssertEqual(p.topics.count, 250)       // still exactly converged
-        let g2 = await count.eventGets
-        XCTAssertEqual(g2 - g1, 2)                // only the 2 new segment GETs
-        await engine.stopPolling()                // persists the snapshot
-        XCTAssertEqual(store.load()?.knownEventPaths.count, 52)  // 2 segs + 50
-
-        // A truly fresh device (no snapshot) folds all 250 from 2 segs + 50
-        // singles — far fewer GETs than one-file-per-event would need.
-        let coldCount = CountingBackend(LocalFileBackend(root: root))
-        let coldRepo = SpaceRepository(backend: coldCount, identity: viewer, spaceID: "s1")
-        let cold = SyncEngine(repo: coldRepo, clock: HLCClock(nodeID: viewer.authorID),
-                              identity: viewer)
-        while await cold.hasUnsyncedHistory { await cold.sync() }
-        await cold.sync()
-        let coldP = await cold.projection
-        XCTAssertEqual(coldP.topics.count, 250)
-        let coldGets = await coldCount.eventGets
-        XCTAssertEqual(coldGets, 52)              // 2 segments + 50 singles
+        XCTAssertNotNil(p.topics["from-iphone"])
+        XCTAssertNotNil(p.topics["from-ipad"])
     }
 
     func testPropfindParserExtractsEntries() {
@@ -256,7 +344,7 @@ final class StorageSyncTests: XCTestCase {
         <d:response><d:href>/flark/events/</d:href>
         <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype>
         </d:prop></d:propstat></d:response>
-        <d:response><d:href>/flark/events/abc/001.json</d:href>
+        <d:response><d:href>/flark/events/abc/dev1/00000001.json</d:href>
         <d:propstat><d:prop><d:resourcetype/><d:getetag>"v1"</d:getetag>
         </d:prop></d:propstat></d:response>
         </d:multistatus>
@@ -264,6 +352,6 @@ final class StorageSyncTests: XCTestCase {
         let entries = PropfindParser.parse(Data(xml.utf8),
                                            base: URL(string: "https://h/flark/")!,
                                            requested: "events")
-        XCTAssertTrue(entries.contains { $0.path.hasSuffix("001.json") && !$0.isDirectory })
+        XCTAssertTrue(entries.contains { $0.path.hasSuffix("00000001.json") && !$0.isDirectory })
     }
 }

@@ -62,6 +62,26 @@ public final class WebDAVBackend: StorageBackend, @unchecked Sendable {
         return (data, http?.value(forHTTPHeaderField: "ETag"))
     }
 
+    /// Real conditional GET. With `knownEtag`, sends `If-None-Match` and maps
+    /// 304 to nil so the sync engine can skip re-folding unchanged files —
+    /// crucial once a long-lived "active" file is re-PUT on every event and
+    /// 20 peers would otherwise re-download it every 15 s poll round.
+    /// `reloadIgnoringLocalCacheData` keeps `URLCache.shared` from converting
+    /// the 304 into a transparent 200 before we see it.
+    public func get(_ path: String, ifNoneMatch knownEtag: String?) async throws -> (data: Data, etag: String?)? {
+        var r = request("GET", path)
+        r.cachePolicy = .reloadIgnoringLocalCacheData
+        if let known = knownEtag {
+            r.setValue(known, forHTTPHeaderField: "If-None-Match")
+        }
+        let (data, resp) = try await dataTask(r)
+        let http = resp as? HTTPURLResponse
+        let code = http?.statusCode ?? 0
+        if code == 304 { return nil }
+        guard (200..<300).contains(code) else { throw mapStatus(code) }
+        return (data, http?.value(forHTTPHeaderField: "ETag"))
+    }
+
     public func put(_ path: String, data: Data, precondition: WritePrecondition) async throws {
         var r = request("PUT", path)
         r.httpBody = data
@@ -114,16 +134,38 @@ public final class WebDAVBackend: StorageBackend, @unchecked Sendable {
     }
 
     /// Retry transient failures (locked / rate-limited / 5xx) with backoff.
+    /// Every attempt — success, retry, or final failure — is logged via
+    /// `FlarkLog` so the in-app diagnostics page reflects the real network
+    /// traffic to/from the WebDAV server.
     private func dataTask(_ request: URLRequest, attempt: Int = 0) async throws -> (Data, URLResponse) {
+        let method = request.httpMethod ?? "?"
+        let logPath = request.url?.path ?? ""
+        let start = Date()
         do {
             let (data, resp) = try await session.data(for: request)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            if [423, 429, 500, 502, 503, 504].contains(code), attempt < 4 {
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            let retryable = [423, 429, 500, 502, 503, 504].contains(code) && attempt < 4
+            FlarkLog.shared.record(
+                code >= 400 ? (retryable ? .warn : .error) : .info,
+                .storage, method,
+                path: logPath,
+                detail: "HTTP \(code)\(attempt > 0 ? " · attempt \(attempt + 1)" : "")",
+                bytes: data.count,
+                durationMs: ms)
+            if retryable {
                 try await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt)) * 300_000_000))
                 return try await dataTask(request, attempt: attempt + 1)
             }
             return (data, resp)
         } catch {
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            FlarkLog.shared.record(
+                attempt < 3 ? .warn : .error,
+                .storage, method,
+                path: logPath,
+                detail: "transport: \(error.localizedDescription)\(attempt > 0 ? " · attempt \(attempt + 1)" : "")",
+                durationMs: ms)
             if attempt < 3 {
                 try await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt)) * 300_000_000))
                 return try await dataTask(request, attempt: attempt + 1)
