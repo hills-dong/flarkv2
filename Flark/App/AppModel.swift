@@ -38,8 +38,8 @@ final class AppModel {
 
     var authorID: String { identity?.authorID ?? "" }
 
-    private func spacePwAccount(_ spaceID: String) -> String {
-        AccountStore.spacePassword(currentAccountID ?? "", spaceID)
+    private func spacePwAccount(_ localID: String) -> String {
+        AccountStore.spacePassword(currentAccountID ?? "", localID)
     }
 
     // MARK: - Bootstrap
@@ -75,7 +75,10 @@ final class AppModel {
             SpaceStore.save(list, account: id)
             for s in list where s.kind == .webdav {
                 if let pw = Keychain.getString("space.\(s.id).password") {
-                    Keychain.setString(pw, account: AccountStore.spacePassword(id, s.id), sync: true)
+                    // Legacy SpaceConfig has localID == id (see the Decodable
+                    // fallback in SpaceConfig), so this routes to the same
+                    // keychain entry the new code reads via cfg.localID.
+                    Keychain.setString(pw, account: AccountStore.spacePassword(id, s.localID), sync: true)
                 }
             }
         }
@@ -133,7 +136,7 @@ final class AppModel {
     func removeAccount(_ id: String) {
         if let list = try? JSONDecoder().decode(
             [SpaceConfig].self, from: Keychain.get(AccountStore.spacesAccount(id)) ?? Data()) {
-            for s in list { Keychain.delete(AccountStore.spacePassword(id, s.id)) }
+            for s in list { Keychain.delete(AccountStore.spacePassword(id, s.localID)) }
         }
         Keychain.delete(AccountStore.keyAccount(id))
         Keychain.delete(AccountStore.nameAccount(id))
@@ -156,14 +159,17 @@ final class AppModel {
     }
 
     /// `spaceID` lets a user join an existing shared Space (it is the WebDAV
-    /// directory name). Blank → a fresh random Space.
+    /// directory name). Blank → a fresh random Space. A fresh per-install
+    /// `localID` is always generated so the same spaceID can be safely bound
+    /// to a second WebDAV server without colliding with the first binding's
+    /// outbox / snapshot / blob caches.
     func addWebDAVSpace(name: String, url: String, user: String, password: String,
                         spaceID: String = "") {
         let trimmed = spaceID.trimmingCharacters(in: .whitespacesAndNewlines)
         let id = trimmed.isEmpty ? UUID().uuidString : trimmed
         let cfg = SpaceConfig(id: id, name: name, kind: .webdav,
                               webdavURL: url, webdavUser: user)
-        Keychain.setString(password, account: spacePwAccount(cfg.id), sync: true)
+        Keychain.setString(password, account: spacePwAccount(cfg.localID), sync: true)
         spaces.append(cfg); persistSpaces()
         Task { await openSpace(cfg) }
     }
@@ -176,19 +182,19 @@ final class AppModel {
         var blobCache: BlobCache?
         switch cfg.kind {
         case .local:
-            backend = LocalFileBackend(root: SpaceStore.localRoot(for: cfg.id))
+            backend = LocalFileBackend(root: SpaceStore.localRoot(for: cfg.localID))
         case .webdav:
             guard let u = URL(string: cfg.webdavURL ?? "") else { return }
-            let pw = Keychain.getString(spacePwAccount(cfg.id)) ?? ""
+            let pw = Keychain.getString(spacePwAccount(cfg.localID)) ?? ""
             backend = WebDAVBackend(baseURL: u, username: cfg.webdavUser ?? "", password: pw)
-            blobCache = BlobCache(directory: SpaceStore.blobCacheRoot(for: cfg.id))
+            blobCache = BlobCache(directory: SpaceStore.blobCacheRoot(for: cfg.localID))
         }
         let clock = HLCClock(nodeID: identity.authorID)
         let repo = SpaceRepository(backend: backend, identity: identity,
                                    spaceID: cfg.id, deviceID: DeviceID.current,
-                                   outboxRoot: SpaceStore.outboxRoot(for: cfg.id),
+                                   outboxRoot: SpaceStore.outboxRoot(for: cfg.localID),
                                    blobCache: blobCache)
-        let snapshots = SnapshotStore(url: SpaceStore.snapshotURL(for: cfg.id))
+        let snapshots = SnapshotStore(url: SpaceStore.snapshotURL(for: cfg.localID))
         let engine = SyncEngine(repo: repo, clock: clock, identity: identity,
                                 snapshotStore: snapshots)
         self.clock = clock; self.repo = repo; self.engine = engine
@@ -235,6 +241,30 @@ final class AppModel {
         Task { await engine?.shutdown() }
     }
 
+    /// Update an existing Space's mutable fields (name + WebDAV connection
+    /// details). `id`, `localID` and `kind` are immutable — changing those
+    /// is semantically a new join, not an edit. Pass a non-nil `password` to
+    /// overwrite the stored credential; nil keeps it. If the edited Space is
+    /// currently open, reconnect so connection changes take effect — local
+    /// caches survive because they're keyed by `localID`, which doesn't move.
+    func updateSpace(_ cfg: SpaceConfig, password: String? = nil) {
+        guard let idx = spaces.firstIndex(where: { $0.localID == cfg.localID }) else { return }
+        spaces[idx] = cfg
+        persistSpaces()
+        if let pw = password, cfg.kind == .webdav {
+            Keychain.setString(pw, account: spacePwAccount(cfg.localID), sync: true)
+        }
+        if currentSpace?.localID == cfg.localID {
+            Task {
+                await engine?.shutdown()
+                engine = nil; repo = nil; clock = nil
+                projection = Projection()
+                syncStatus = .idle
+                await openSpace(cfg)
+            }
+        }
+    }
+
     func switchSpace(_ cfg: SpaceConfig) {
         Task {
             await engine?.shutdown()
@@ -266,16 +296,16 @@ final class AppModel {
 
             switch cfg.kind {
             case .local:
-                try? FileManager.default.removeItem(at: SpaceStore.localRoot(for: cfg.id))
+                try? FileManager.default.removeItem(at: SpaceStore.localRoot(for: cfg.localID))
             case .webdav:
-                Keychain.delete(spacePwAccount(cfg.id))
+                Keychain.delete(spacePwAccount(cfg.localID))
             }
             // The projection + blob + thumbnail caches + outbox mirror are
             // per-Space regardless of backend kind.
-            try? FileManager.default.removeItem(at: SpaceStore.snapshotURL(for: cfg.id))
-            try? FileManager.default.removeItem(at: SpaceStore.blobCacheRoot(for: cfg.id))
-            try? FileManager.default.removeItem(at: SpaceStore.thumbCacheRoot(for: cfg.id))
-            try? FileManager.default.removeItem(at: SpaceStore.outboxRoot(for: cfg.id))
+            try? FileManager.default.removeItem(at: SpaceStore.snapshotURL(for: cfg.localID))
+            try? FileManager.default.removeItem(at: SpaceStore.blobCacheRoot(for: cfg.localID))
+            try? FileManager.default.removeItem(at: SpaceStore.thumbCacheRoot(for: cfg.localID))
+            try? FileManager.default.removeItem(at: SpaceStore.outboxRoot(for: cfg.localID))
 
             if wasCurrent {
                 if let next = spaces.first {
@@ -392,8 +422,8 @@ final class AppModel {
     /// The fetch hops to the repo actor; decode/resize/IO run off the main
     /// actor (the helpers below are `nonisolated`) so scrolling stays smooth.
     func loadThumbnail(_ id: String, maxEdge: Int = 900) async -> Data? {
-        guard let spaceID = currentSpace?.id else { return await loadImage(id) }
-        let url = SpaceStore.thumbCacheRoot(for: spaceID)
+        guard let localID = currentSpace?.localID else { return await loadImage(id) }
+        let url = SpaceStore.thumbCacheRoot(for: localID)
             .appendingPathComponent("\(id)@\(maxEdge)")
         if let cached = await Self.readFile(url) { return cached }
         guard let full = await loadImage(id) else { return nil }
@@ -467,7 +497,10 @@ final class AppModel {
         guard let identity, !passphrase.isEmpty else { return nil }
         var pw: [String: String] = [:]
         for s in spaces where s.kind == .webdav {
-            pw[s.id] = Keychain.getString(spacePwAccount(s.id)) ?? ""
+            // Keyed by localID — matches `spacePwAccount` and lets the same
+            // spaceID appear twice (one per WebDAV binding) without one
+            // password overwriting the other.
+            pw[s.localID] = Keychain.getString(spacePwAccount(s.localID)) ?? ""
         }
         let portable = PortableIdentity(
             key: identity.privateKey.rawRepresentation.base64EncodedString(),
@@ -494,8 +527,12 @@ final class AppModel {
         AccountStore.upsert(id: acctID, name: p.name)
         AccountStore.currentID = acctID
 
-        for (spaceID, password) in p.passwords {
-            Keychain.setString(password, account: AccountStore.spacePassword(acctID, spaceID), sync: true)
+        // Keys in `p.passwords` are localIDs (new exports) or spaceIDs (legacy
+        // exports where SpaceConfig had no localID). For legacy data the
+        // SpaceConfig decoder falls back to localID == id, so either form ends
+        // up at the right keychain account.
+        for (key, password) in p.passwords {
+            Keychain.setString(password, account: AccountStore.spacePassword(acctID, key), sync: true)
         }
         spaces = p.spaces
         SpaceStore.save(spaces, account: acctID)

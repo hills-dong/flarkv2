@@ -92,31 +92,137 @@ struct SpaceSetupView: View {
     }
 
     private func field(_ label: String, text: Binding<String>, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(label).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
-            TextField(placeholder, text: text)
-                .textFieldStyle(.plain)
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                #endif
-                .padding(15)
-                .background(Color.platformBackground,
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .modifier(FieldOutlineMac())
-        }
+        spaceFormField(label, text: text, placeholder: placeholder)
     }
 
     private func secureField(_ label: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(label).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
-            SecureField("••••••••", text: text)
-                .textFieldStyle(.plain)
-                .padding(15)
-                .background(Color.platformBackground,
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .modifier(FieldOutlineMac())
+        spaceFormSecureField(label, text: text)
+    }
+}
+
+/// Shared text field styling for `SpaceSetupView` / `SpaceEditView`.
+fileprivate func spaceFormField(_ label: String, text: Binding<String>,
+                                placeholder: String) -> some View {
+    VStack(alignment: .leading, spacing: 7) {
+        Text(label).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+        TextField(placeholder, text: text)
+            .textFieldStyle(.plain)
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            #endif
+            .padding(15)
+            .background(Color.platformBackground,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .modifier(FieldOutlineMac())
+    }
+}
+
+fileprivate func spaceFormSecureField(_ label: String,
+                                      text: Binding<String>,
+                                      placeholder: String = "••••••••") -> some View {
+    VStack(alignment: .leading, spacing: 7) {
+        Text(label).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+        SecureField(placeholder, text: text)
+            .textFieldStyle(.plain)
+            .padding(15)
+            .background(Color.platformBackground,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .modifier(FieldOutlineMac())
+    }
+}
+
+/// Edit name + WebDAV connection for an existing Space. The space's `id`
+/// (shared spaceID), `localID` and `kind` are intentionally immutable —
+/// changing those is semantically a new join, not an edit.
+struct SpaceEditView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let original: SpaceConfig
+    @State private var name: String
+    @State private var url: String
+    @State private var user: String
+    @State private var password: String = ""
+
+    init(space: SpaceConfig) {
+        self.original = space
+        _name = State(initialValue: space.name)
+        _url = State(initialValue: space.webdavURL ?? "")
+        _user = State(initialValue: space.webdavUser ?? "")
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("编辑话题群").font(.title.weight(.bold))
+                Text("可修改名称与连接信息；群 ID 与类型不可改（那等同于新建一个群）。")
+                    .foregroundStyle(.secondary)
+
+                spaceFormField("名称", text: $name, placeholder: "如：TikTok 账号变更")
+
+                if original.kind == .webdav {
+                    spaceFormField("WebDAV 地址", text: $url,
+                                   placeholder: "https://dav.example.com/flark/")
+                    spaceFormField("账号", text: $user, placeholder: "用户名")
+                    spaceFormSecureField("密码", text: $password,
+                                         placeholder: "留空则保持不变")
+                    HStack(spacing: 8) {
+                        Text("群 ID")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text(original.id)
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+
+                saveButton.padding(.top, 6)
+            }
+            .padding(24)
+            .frame(maxWidth: 560)
+            #if os(macOS)
+            .frame(maxWidth: .infinity)
+            #endif
         }
+        .background(Color.platformGrouped)
+    }
+
+    @ViewBuilder private var saveButton: some View {
+        #if os(macOS)
+        Button("保存", action: save)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .keyboardShortcut(.defaultAction)
+            .disabled(!canSave)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        #else
+        Button(action: save) {
+            Text("保存").font(.headline)
+                .frame(maxWidth: .infinity).padding(16)
+                .background(Color.accentColor,
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .foregroundStyle(.white)
+        }
+        .disabled(!canSave)
+        #endif
+    }
+
+    private var canSave: Bool {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        if original.kind == .webdav { return !url.isEmpty && !user.isEmpty }
+        return true
+    }
+
+    private func save() {
+        var updated = original
+        updated.name = name.trimmingCharacters(in: .whitespaces)
+        if original.kind == .webdav {
+            updated.webdavURL = url.trimmingCharacters(in: .whitespaces)
+            updated.webdavUser = user.trimmingCharacters(in: .whitespaces)
+        }
+        model.updateSpace(updated, password: password.isEmpty ? nil : password)
+        dismiss()
     }
 }
 
@@ -143,6 +249,7 @@ struct SpaceListView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var adding = false
+    @State private var editing: SpaceConfig?
     @State private var pendingDelete: SpaceConfig?
 
     var body: some View {
@@ -173,6 +280,24 @@ struct SpaceListView: View {
                             } label: {
                                 Label("删除", systemImage: "trash")
                             }
+                            Button {
+                                editing = space
+                            } label: {
+                                Label("编辑", systemImage: "pencil")
+                            }
+                            .tint(.blue)
+                        }
+                        .contextMenu {
+                            Button {
+                                editing = space
+                            } label: {
+                                Label("编辑", systemImage: "pencil")
+                            }
+                            Button(role: .destructive) {
+                                pendingDelete = space
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
                         }
                     }
                 }
@@ -185,6 +310,9 @@ struct SpaceListView: View {
             }
             .sheet(isPresented: $adding) {
                 SpaceSetupView { adding = false; dismiss() }
+            }
+            .sheet(item: $editing) { space in
+                SpaceEditView(space: space)
             }
             .confirmationDialog("删除话题群",
                                 isPresented: Binding(get: { pendingDelete != nil },
