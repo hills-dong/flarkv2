@@ -16,8 +16,8 @@ struct SpaceSetupView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("连接一个话题群").font(.title.weight(.bold))
-                Text("一个本地文件夹或 WebDAV 目录就是一个「群」。同一目录下的成员共享话题与回复，没有服务器。")
+                Text("连接话题群").font(.title.weight(.bold))
+                Text("一个目录就是一个群。同目录的成员共享话题，无需服务器。")
                     .foregroundStyle(.secondary)
 
                 Picker("", selection: $kind) {
@@ -26,18 +26,18 @@ struct SpaceSetupView: View {
                 }
                 .pickerStyle(.segmented)
 
-                field("名称", text: $name, placeholder: "如：TikTok 账号变更")
+                field("名称", text: $name, placeholder: "如：日常 / 想法 / 小组")
 
                 if kind == .webdav {
                     field("WebDAV 地址", text: $url, placeholder: "https://dav.example.com/flark/")
                     field("账号", text: $user, placeholder: "用户名")
                     secureField("密码", text: $password)
                     field("群 ID（可选）", text: $spaceId,
-                          placeholder: "加入已有群时填写，如 lifememov2；留空则新建")
-                    Text("凭据仅保存在本机钥匙串。并发写入由「每设备独立追加 + 内容寻址」自动避免冲突。")
+                          placeholder: "加入已有群填群 ID；留空则新建")
+                    Text("凭据仅存本机钥匙串。")
                         .font(.footnote).foregroundStyle(.secondary)
                 } else {
-                    Text("将在应用容器内创建本地群目录，可在「设置」里换成 WebDAV 或自建服务器，数据格式不变。")
+                    Text("将在本机创建群目录，之后可在设置里改为 WebDAV。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
 
@@ -155,10 +155,10 @@ struct SpaceEditView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("编辑话题群").font(.title.weight(.bold))
-                Text("可修改名称与连接信息；群 ID 与类型不可改（那等同于新建一个群）。")
+                Text("可改名称与连接信息；群 ID 与类型不可改。")
                     .foregroundStyle(.secondary)
 
-                spaceFormField("名称", text: $name, placeholder: "如：TikTok 账号变更")
+                spaceFormField("名称", text: $name, placeholder: "如：日常 / 想法 / 小组")
 
                 if original.kind == .webdav {
                     spaceFormField("WebDAV 地址", text: $url,

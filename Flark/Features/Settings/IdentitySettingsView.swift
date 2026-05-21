@@ -25,9 +25,9 @@ struct IdentitySettingsView: View {
                     Section {
                         Label("已开启 iCloud 钥匙串同步", systemImage: "checkmark.icloud")
                             .foregroundStyle(.green)
-                        Text("登录同一 Apple ID 且开启了「iCloud 钥匙串」的其他设备，会自动成为同一身份并看到相同的话题群，无需手动操作。跨 Apple ID 或换平台时，用下面的恢复码。")
+                        Text("同 Apple ID 且开启钥匙串同步的设备自动共享身份。跨 Apple ID 或换平台时改用下方恢复码。")
                             .font(.footnote).foregroundStyle(.secondary)
-                    } header: { Text("自动多设备 (A)") }
+                    } header: { Text("自动同步") }
                 }
 
                 if model.hasIdentity {
@@ -50,8 +50,8 @@ struct IdentitySettingsView: View {
                                 message = "已复制恢复码"
                             } label: { Label("复制恢复码", systemImage: "doc.on.doc") }
                         }
-                    } header: { Text("导出身份 (B)") }
-                    footer: { Text("恢复码含私钥与 WebDAV 密码，已用口令加密。请用安全渠道保存，勿公开分享。") }
+                    } header: { Text("导出恢复码") }
+                    footer: { Text("含私钥与 WebDAV 密码，已用口令加密。请安全保存。") }
                 }
 
                 Section {
@@ -67,8 +67,8 @@ struct IdentitySettingsView: View {
                         }
                     }
                     .disabled(importCode.isEmpty || importPass.isEmpty)
-                } header: { Text("在本设备导入身份 (B)") }
-                footer: { Text("将用恢复码里的身份替换本设备当前身份，并恢复其全部话题群。") }
+                } header: { Text("导入恢复码") }
+                footer: { Text("将替换本机当前身份，并恢复其全部话题群。") }
 
                 if model.hasIdentity {
                     Section {
@@ -78,7 +78,7 @@ struct IdentitySettingsView: View {
                             Label("操作日志", systemImage: "doc.text.magnifyingglass")
                         }
                     } footer: {
-                        Text("查看本机所有数据操作记录：WebDAV / 本地存储读写、事件追加与文件翻页、同步轮询与 304 跳过。")
+                        Text("本机数据读写、同步、文件操作的明细记录。")
                     }
 
                     Section {
@@ -86,14 +86,14 @@ struct IdentitySettingsView: View {
                             Label("登出 / 切换身份", systemImage: "rectangle.portrait.and.arrow.right")
                         }
                     } footer: {
-                        Text("登出只是切走当前身份，**不会删除任何数据**——可随时再登录、切换或新增其他身份。")
+                        Text("仅切换身份，**不会删除任何数据**。")
                     }
                     Section {
                         Button(role: .destructive) { showDeleteAccount = true } label: {
                             Label("彻底删除此身份", systemImage: "trash")
                         }
                     } footer: {
-                        Text("不可恢复：抹除此身份及其全部话题群。因 iCloud 钥匙串同步，你的其他设备也会一并删除。请先导出恢复码。")
+                        Text("不可恢复：抹除此身份及其全部话题群。开启钥匙串同步的其他设备也会一并删除。请先导出恢复码。")
                     }
                 }
 
@@ -116,7 +116,7 @@ struct IdentitySettingsView: View {
                 }
                 Button("取消", role: .cancel) { }
             } message: {
-                Text("数据会保留，可随时再登录或切换其他身份。")
+                Text("数据保留，可随时再登录。")
             }
             .confirmationDialog("彻底删除此身份？", isPresented: $showDeleteAccount,
                                 titleVisibility: .visible) {
@@ -126,7 +126,7 @@ struct IdentitySettingsView: View {
                 }
                 Button("取消", role: .cancel) { }
             } message: {
-                Text("不可恢复，且因 iCloud 同步会从你的所有设备删除。没有恢复码将无法找回。")
+                Text("不可恢复，且会同步从其他设备删除。无恢复码将无法找回。")
             }
         }
     }

@@ -60,7 +60,7 @@ struct AccountPickerView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("选择身份").font(.largeTitle.weight(.bold))
-                Text("本机已有以下身份，登出不会删除任何数据。点按即可登录。")
+                Text("点按以切换身份。登出不会删除任何数据。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

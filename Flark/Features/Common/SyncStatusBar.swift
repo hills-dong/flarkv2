@@ -41,7 +41,10 @@ struct SyncStatusBar: View {
     }
 
     private func progress(_ done: Int, _ total: Int) -> String {
-        total > 0 ? "\(done.formatted()) / \(total.formatted()) 条" : "…"
+        guard total > 0 else { return "…" }
+        let d = done.formatted(); let t = total.formatted()
+        return String(localized: "\(d) / \(t) 条",
+                      comment: "Sync progress, done over total events")
     }
 
     private var descriptor: Descriptor? {
@@ -49,15 +52,24 @@ struct SyncStatusBar: View {
         case .idle:
             return nil
         case let .syncing(done, total):
-            return Descriptor(text: "正在同步 \(progress(done, total))",
-                              icon: "arrow.triangle.2.circlepath",
-                              tint: .secondary, showsSpinner: true)
+            let p = progress(done, total)
+            return Descriptor(
+                text: String(localized: "正在同步 \(p)", comment: "Sync banner — actively pulling"),
+                icon: "arrow.triangle.2.circlepath",
+                tint: .secondary, showsSpinner: true
+            )
         case let .throttled(done, total):
-            return Descriptor(text: "已限流 · \(progress(done, total))",
-                              icon: "hourglass", tint: .orange, showsSpinner: false)
+            let p = progress(done, total)
+            return Descriptor(
+                text: String(localized: "已限流 · \(p)", comment: "Sync banner — throttled by server"),
+                icon: "hourglass", tint: .orange, showsSpinner: false
+            )
         case let .offline(done, total):
-            return Descriptor(text: "离线 · \(progress(done, total))",
-                              icon: "wifi.slash", tint: .orange, showsSpinner: false)
+            let p = progress(done, total)
+            return Descriptor(
+                text: String(localized: "离线 · \(p)", comment: "Sync banner — network offline"),
+                icon: "wifi.slash", tint: .orange, showsSpinner: false
+            )
         }
     }
 }

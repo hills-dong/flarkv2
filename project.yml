@@ -5,6 +5,8 @@ options:
     iOS: "17.0"
     macOS: "14.0"
   createIntermediateGroups: true
+  developmentLanguage: zh-Hans
+  knownRegions: [zh-Hans, en, Base]
 
 packages:
   FlarkKit:

@@ -6,17 +6,17 @@ import FlarkKit
 struct EmojiPickerView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    var title: String = "选择表情"
+    var title: LocalizedStringKey = "选择表情"
     var onPick: (EmojiItem) -> Void
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 6)
 
-    private func label(_ cat: String) -> String {
+    private func label(_ cat: String) -> LocalizedStringKey {
         switch cat {
         case "most_used": return "最常使用"
         case "default": return "默认表情"
         case "lark": return "Lark 贴纸"
-        default: return cat
+        default: return LocalizedStringKey(cat)
         }
     }
 

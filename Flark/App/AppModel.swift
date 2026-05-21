@@ -67,7 +67,8 @@ final class AppModel {
         let did = DeviceIdentity(privateKey: pk)
         let id = did.authorID
         let name = Keychain.getString(legacyName)
-            ?? UserDefaults.standard.string(forKey: "flark.displayName") ?? "我"
+            ?? UserDefaults.standard.string(forKey: "flark.displayName")
+            ?? String(localized: "我", comment: "Default display name for migrated single-user identity")
         Keychain.set(keyData, account: AccountStore.keyAccount(id), sync: true)
         Keychain.setString(name, account: AccountStore.nameAccount(id), sync: true)
         if let old = Keychain.get(legacySpaces),
@@ -345,6 +346,17 @@ final class AppModel {
         emit(.topicDelete(topicID: topicID))
     }
 
+    /// A topic can be edited only by its own author. Unlike delete, edits are
+    /// allowed regardless of replies/reactions — that's the normal expectation.
+    func canEditTopic(_ topicID: String) -> Bool {
+        guard let topic = projection.topics[topicID] else { return false }
+        return topic.authorID == authorID
+    }
+
+    func editTopic(_ topicID: String, body: ContentDocument) {
+        emit(.topicEdit(topicID: topicID, body: body))
+    }
+
     func createReply(topicID: String, body: ContentDocument) {
         emit(.replyCreate(replyID: UUID().uuidString, topicID: topicID, body: body))
     }
@@ -357,6 +369,15 @@ final class AppModel {
 
     func deleteReply(_ replyID: String) {
         emit(.replyDelete(replyID: replyID))
+    }
+
+    func canEditReply(_ replyID: String) -> Bool {
+        guard let reply = projection.replies[replyID] else { return false }
+        return reply.authorID == authorID
+    }
+
+    func editReply(_ replyID: String, body: ContentDocument) {
+        emit(.replyEdit(replyID: replyID, body: body))
     }
 
     func toggleReaction(targetID: String, type: TargetType, emojiID: String) {
