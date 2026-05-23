@@ -389,20 +389,49 @@ func attributedString(fromSegments segs: [ContentDocument.Segment],
                       catalog: EmojiCatalog,
                       images: [String: Data] = [:]) -> NSAttributedString {
     let m = NSMutableAttributedString()
+    let nlAttrs = RichTextAttributes.typing(for: nil)
+
+    // Mirror `ComposerView.insertImage` so loaded images live on their own
+    // paragraph. Without surrounding `\n`s the image attachment's paragraph
+    // style (paragraphSpacingBefore/After) collides with the text run's
+    // paragraph style inside a single paragraph — TextKit then crashes when
+    // the caret moves across the boundary (e.g. tapping text before an image).
+    func endsWithNewline() -> Bool {
+        guard m.length > 0 else { return false }
+        return (m.string as NSString).substring(with: NSRange(location: m.length - 1, length: 1)) == "\n"
+    }
+    var pendingTrailingNL = false
+    func consumePendingTrailing(nextStartsWithNewline: Bool) {
+        guard pendingTrailingNL else { return }
+        pendingTrailingNL = false
+        if !nextStartsWithNewline {
+            m.append(NSAttributedString(string: "\n", attributes: nlAttrs))
+        }
+    }
+
     for seg in segs {
         switch seg {
         case .text(let s):
+            consumePendingTrailing(nextStartsWithNewline: s.first == "\n")
             m.append(NSAttributedString(string: s, attributes: RichTextAttributes.typing(for: nil)))
         case .styledText(let s, let style):
+            consumePendingTrailing(nextStartsWithNewline: s.first == "\n")
             m.append(NSAttributedString(string: s, attributes: RichTextAttributes.typing(for: style)))
         case .emoji(let id):
+            consumePendingTrailing(nextStartsWithNewline: false)
             if let item = catalog.item(id) {
                 m.append(emojiAttachmentString(item: item))
             }
         case .image(let blob, let w, let h):
+            consumePendingTrailing(nextStartsWithNewline: false)
+            if m.length > 0, !endsWithNewline() {
+                m.append(NSAttributedString(string: "\n", attributes: nlAttrs))
+            }
             m.append(imageAttachmentString(blobID: blob, w: w, h: h, data: images[blob]))
+            pendingTrailingNL = true
         }
     }
+    consumePendingTrailing(nextStartsWithNewline: false)
     return m
 }
 #endif
