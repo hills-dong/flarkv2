@@ -85,12 +85,31 @@ struct IdentitySettingsView: View {
                         Button { showLogout = true } label: {
                             Label("登出 / 切换身份", systemImage: "rectangle.portrait.and.arrow.right")
                         }
+                        .confirmationDialog("登出当前身份？", isPresented: $showLogout, titleVisibility: .visible) {
+                            Button("登出") {
+                                model.logout()
+                                dismiss()
+                            }
+                            Button("取消", role: .cancel) { }
+                        } message: {
+                            Text("数据保留，可随时再登录。")
+                        }
                     } footer: {
                         Text("仅切换身份，**不会删除任何数据**。")
                     }
                     Section {
                         Button(role: .destructive) { showDeleteAccount = true } label: {
                             Label("彻底删除此身份", systemImage: "trash")
+                        }
+                        .confirmationDialog("彻底删除此身份？", isPresented: $showDeleteAccount,
+                                            titleVisibility: .visible) {
+                            Button("永久删除", role: .destructive) {
+                                if let id = model.currentAccountID { model.removeAccount(id) }
+                                dismiss()
+                            }
+                            Button("取消", role: .cancel) { }
+                        } message: {
+                            Text("不可恢复，且会同步从其他设备删除。无恢复码将无法找回。")
                         }
                     } footer: {
                         Text("不可恢复：抹除此身份及其全部话题群。开启钥匙串同步的其他设备也会一并删除。请先导出恢复码。")
@@ -108,25 +127,6 @@ struct IdentitySettingsView: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
-            }
-            .confirmationDialog("登出当前身份？", isPresented: $showLogout, titleVisibility: .visible) {
-                Button("登出") {
-                    model.logout()
-                    dismiss()
-                }
-                Button("取消", role: .cancel) { }
-            } message: {
-                Text("数据保留，可随时再登录。")
-            }
-            .confirmationDialog("彻底删除此身份？", isPresented: $showDeleteAccount,
-                                titleVisibility: .visible) {
-                Button("永久删除", role: .destructive) {
-                    if let id = model.currentAccountID { model.removeAccount(id) }
-                    dismiss()
-                }
-                Button("取消", role: .cancel) { }
-            } message: {
-                Text("不可恢复，且会同步从其他设备删除。无恢复码将无法找回。")
             }
         }
     }
