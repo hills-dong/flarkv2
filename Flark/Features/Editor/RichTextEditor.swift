@@ -42,12 +42,23 @@ struct RichTextEditor: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UITextView, context: Context) {
+        let coord = context.coordinator
         let target = clamp(selection, to: attributedText.length)
-        if !uiView.attributedText.isEqual(to: attributedText) {
+        // Compare against what we last pushed, NOT against `uiView.attributedText`:
+        // UITextView canonicalizes attributes on assignment (especially paragraph
+        // style around NSTextAttachment runs), so reading back yields a string
+        // that's no longer byte-equal to what we set. Comparing canonical-vs-
+        // pristine would mismatch every render and re-assign attributedText every
+        // frame → textViewDidChangeSelection → parent.selection mutation →
+        // re-render → loop, hanging the app on edit of image-bearing content.
+        if !coord.lastPushedAttributed.isEqual(to: attributedText) {
             uiView.attributedText = attributedText
+            coord.lastPushedAttributed = attributedText
             uiView.selectedRange = target
-        } else if !NSEqualRanges(uiView.selectedRange, target) {
+            coord.lastPushedSelection = target
+        } else if !NSEqualRanges(coord.lastPushedSelection, target) {
             uiView.selectedRange = target
+            coord.lastPushedSelection = target
         }
         uiView.typingAttributes = RichTextAttributes.typing(for: typingStyle)
         if focused, !uiView.isFirstResponder {
@@ -76,15 +87,27 @@ struct RichTextEditor: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: RichTextEditor
+        /// Snapshot of the attributed text / selection that `updateUIView` last
+        /// pushed into the UITextView. Used so the next render compares against
+        /// the same uncanonicalized form we sent down rather than UITextView's
+        /// post-TextKit reading, avoiding a re-assign-every-frame loop.
+        var lastPushedAttributed: NSAttributedString = NSAttributedString()
+        var lastPushedSelection: NSRange = NSRange(location: 0, length: 0)
         init(_ p: RichTextEditor) { parent = p }
 
         func textViewDidChange(_ tv: UITextView) {
-            parent.attributedText = tv.attributedText
+            let attr = tv.attributedText ?? NSAttributedString()
+            parent.attributedText = attr
             parent.selection = tv.selectedRange
+            // The user-edited text *is* the canonical form; record it so the
+            // next `updateUIView` doesn't echo it back to the text view.
+            lastPushedAttributed = attr
+            lastPushedSelection = tv.selectedRange
         }
 
         func textViewDidChangeSelection(_ tv: UITextView) {
             parent.selection = tv.selectedRange
+            lastPushedSelection = tv.selectedRange
             // Sync toolbar highlight: for a collapsed caret, mirror the run
             // the cursor is sitting in; for a real selection, only light up
             // when *every* run in the range carries the same style (so a
