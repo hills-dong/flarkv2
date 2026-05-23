@@ -11,6 +11,11 @@ public struct TopicState: Identifiable, Equatable, Sendable, Codable {
     public var createdAt: Int64        // hlc.wallMillis of creating event
     public var replyCount: Int
     public var lastActivity: Int64
+    /// HLC of the most recent edit (nil if never edited). Stored for LWW so
+    /// out-of-order edit events resolve deterministically.
+    public var editHLC: HLC?
+    /// wallMillis of the most recent edit (mirrors `editHLC` for display).
+    public var editedAt: Int64?
 }
 
 /// Lightweight row for the topic list — excludes the heavy `ContentDocument`
@@ -25,34 +30,101 @@ public struct TopicRow: Identifiable, Equatable, Sendable, Codable {
 
     public let id: String
     public let authorID: String
-    public let preview: String
+    /// Inline preview segments (text, emoji, styledText) for the list row.
+    /// Image segments are excluded — they render as real thumbnails via `images`.
+    /// Carries styling info so the list can render bold/italic/links the same
+    /// way the topic detail does.
+    public let previewSegments: [ContentDocument.Segment]
     public let createdAt: Int64
     public let replyCount: Int
     public let lastActivity: Int64
+    /// Non-nil when the topic body has been edited at least once. Used by the
+    /// list cell to show a "已编辑" suffix next to the timestamp.
+    public let editedAt: Int64?
     /// Topic images for the list thumbnails. Capped so a single huge gallery
     /// can't bloat the snapshotted row map at 10k+ topics.
     public let images: [Image]
 
     /// Max image thumbnails carried into the list row.
     static let maxRowImages = 9
+    /// Soft character cap for the preview run. Keeps the row map cheap on
+    /// huge topics while still showing 3-4 lines of body.
+    static let previewCharLimit = 200
 
     static func make(from t: TopicState) -> TopicRow {
         var imgs: [Image] = []
-        // Preview is text + emoji only — images render as real thumbnails in
-        // the list, so the "[图片]" placeholder from `plainText` is dropped.
-        var preview = ""
+        var segs: [ContentDocument.Segment] = []
+        var charCount = 0
+        // The editor wraps each inline image with `\n[image]\n` so it lands
+        // on its own paragraph. When we hoist images out to the thumbnail
+        // row, those wrapping newlines would otherwise survive as a stray
+        // blank line in the preview text — strip them on both sides.
+        var stripNextLeadingNL = false
+
         for seg in t.body.segments {
             switch seg {
-            case .text(let s): preview += s
-            case .emoji(let id): preview += "[\(id)]"
-            case .image(let blobID, _, _): imgs.append(Image(blobID: blobID))
+            case .image(let blobID, _, _):
+                imgs.append(Image(blobID: blobID))
+                if !segs.isEmpty {
+                    switch segs[segs.count - 1] {
+                    case .text(let s) where s.hasSuffix("\n"):
+                        let t = String(s.dropLast())
+                        if t.isEmpty { segs.removeLast() }
+                        else { segs[segs.count - 1] = .text(t) }
+                        charCount -= 1
+                    case .styledText(let s, let style) where s.hasSuffix("\n"):
+                        let t = String(s.dropLast())
+                        if t.isEmpty { segs.removeLast() }
+                        else { segs[segs.count - 1] = .styledText(text: t, style: style) }
+                        charCount -= 1
+                    default:
+                        break
+                    }
+                }
+                stripNextLeadingNL = true
+            case .text(let raw):
+                var s = raw
+                if stripNextLeadingNL, s.hasPrefix("\n") {
+                    s = String(s.dropFirst())
+                }
+                stripNextLeadingNL = false
+                if !s.isEmpty, let trimmed = clip(s, used: &charCount) {
+                    segs.append(.text(trimmed))
+                }
+            case .styledText(let raw, let style):
+                var s = raw
+                if stripNextLeadingNL, s.hasPrefix("\n") {
+                    s = String(s.dropFirst())
+                }
+                stripNextLeadingNL = false
+                if !s.isEmpty, let trimmed = clip(s, used: &charCount) {
+                    segs.append(.styledText(text: trimmed, style: style))
+                }
+            case .emoji(let id):
+                stripNextLeadingNL = false
+                if charCount < previewCharLimit {
+                    segs.append(.emoji(id: id)); charCount += 1
+                }
             }
         }
         return TopicRow(id: t.id, authorID: t.authorID,
-                        preview: String(preview.prefix(200)),
+                        previewSegments: segs,
                         createdAt: t.createdAt, replyCount: t.replyCount,
                         lastActivity: t.lastActivity,
+                        editedAt: t.editedAt,
                         images: Array(imgs.prefix(maxRowImages)))
+    }
+
+    private static func clip(_ s: String, used: inout Int) -> String? {
+        let remaining = previewCharLimit - used
+        guard remaining > 0 else { return nil }
+        if s.count <= remaining {
+            used += s.count
+            return s
+        }
+        let cut = s.index(s.startIndex, offsetBy: remaining)
+        used += remaining
+        return String(s[..<cut])
     }
 }
 
@@ -62,6 +134,8 @@ public struct ReplyState: Identifiable, Equatable, Sendable, Codable {
     public var authorID: String
     public var body: ContentDocument
     public var createdAt: Int64
+    public var editHLC: HLC?
+    public var editedAt: Int64?
 }
 
 public struct ReactionKey: Hashable, Sendable {
@@ -280,6 +354,27 @@ public struct Projection: Sendable {
                 removeReply(replyID)
             }
 
+        case .topicEdit(let topicID, let body):
+            // Author-only. LWW by HLC so out-of-order edits resolve the same
+            // on every device.
+            if var t = topics[topicID], t.authorID == event.authorID {
+                if let prev = t.editHLC, !(event.hlc > prev) { break }
+                t.body = body
+                t.editHLC = event.hlc
+                t.editedAt = event.hlc.wallMillis
+                topics[topicID] = t
+                setRow(.make(from: t))
+            }
+
+        case .replyEdit(let replyID, let body):
+            if var r = replies[replyID], r.authorID == event.authorID {
+                if let prev = r.editHLC, !(event.hlc > prev) { break }
+                r.body = body
+                r.editHLC = event.hlc
+                r.editedAt = event.hlc.wallMillis
+                replies[replyID] = r
+            }
+
         case .reactionSet(let targetID, _, let emojiID, let removed):
             let key = ReactionKey(targetID: targetID, authorID: event.authorID, emojiID: emojiID)
             if let existing = reactions[key], !(event.hlc > existing.hlc) {
@@ -346,7 +441,7 @@ public enum MergeReducer {
     /// Bumped whenever reducer semantics or projected state shape change.
     /// Persisted in a snapshot; a mismatch forces a full rebuild from the
     /// (immutable, always-authoritative) event log.
-    public static let reducerFingerprint = "v4-row-images-no-img-preview"
+    public static let reducerFingerprint = "v7-strip-image-gutter-newlines"
 
     /// Fold a batch of events into a projection. Unauthentic events are
     /// dropped. Order-independent: events are globally sorted first.

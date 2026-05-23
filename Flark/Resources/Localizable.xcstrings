@@ -12,13 +12,13 @@
         }
       }
     },
-    "%@ / %@ 条": {
+    "%@ / %@ 个文件": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ / %@ events"
+            "value": "%@ / %@ files"
           }
         }
       }
@@ -199,24 +199,24 @@
         }
       }
     },
-    "写回复… 支持图片和表情": {
+    "写点什么…": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Write a reply… images and emoji supported"
+            "value": "Write something…"
           }
         }
       }
     },
-    "写点什么… 图片和表情直接在此输入框内所见即所得": {
+    "回复点什么…": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Write something… images and emoji inline, WYSIWYG"
+            "value": "Reply something…"
           }
         }
       }

@@ -43,8 +43,8 @@ struct SyncStatusBar: View {
     private func progress(_ done: Int, _ total: Int) -> String {
         guard total > 0 else { return "…" }
         let d = done.formatted(); let t = total.formatted()
-        return String(localized: "\(d) / \(t) 条",
-                      comment: "Sync progress, done over total events")
+        return String(localized: "\(d) / \(t) 个文件",
+                      comment: "Sync progress, done over total event-segment files")
     }
 
     private var descriptor: Descriptor? {

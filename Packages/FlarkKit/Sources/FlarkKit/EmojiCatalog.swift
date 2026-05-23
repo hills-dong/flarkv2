@@ -1,47 +1,91 @@
 import Foundation
 
-/// One entry in the Lark-style emoji/sticker library. `file` is optional:
-/// until the user drops real Lark images into Resources/Emoji, `unicode`
-/// renders a tasteful fallback so the whole app still works.
+/// One entry in the Lark-style sticker library. The image at `file` is the
+/// rendered glyph; `nameZh`/`nameEn` are display names; `aliases` is the set
+/// of strings a placeholder parser will accept (e.g. ["笑哭", "LOL", "lol"]
+/// all resolve to the same item).
 public struct EmojiItem: Codable, Identifiable, Equatable, Sendable {
     public let id: String
-    public var file: String?
-    public var unicode: String?
-    public var category: String        // e.g. "most_used", "default"
+    public var file: String
+    public var nameZh: String
+    public var nameEn: String
+    public var aliases: [String]
+    public var category: String        // "most_used" / "default"
     public var keywords: [String]
 
-    public init(id: String, file: String? = nil, unicode: String? = nil,
-                category: String, keywords: [String] = []) {
-        self.id = id; self.file = file; self.unicode = unicode
+    public init(id: String, file: String, nameZh: String = "", nameEn: String = "",
+                aliases: [String] = [], category: String = "default",
+                keywords: [String] = []) {
+        self.id = id; self.file = file
+        self.nameZh = nameZh; self.nameEn = nameEn
+        self.aliases = aliases
         self.category = category; self.keywords = keywords
+    }
+
+    /// Canonical inline placeholder text for use in plain-text projections,
+    /// e.g. `[笑哭]` if a zh-CN name exists, else `[LOL]`, else `[id]`.
+    public var placeholder: String {
+        let inner = !nameZh.isEmpty ? nameZh : (!nameEn.isEmpty ? nameEn : id)
+        return "[\(inner)]"
     }
 }
 
 public struct EmojiManifest: Codable, Sendable {
+    /// IDs that surface in the picker's `最常使用` shortcut row, ordered by
+    /// usage frequency. Items here are ALSO present in `items` (they appear
+    /// in both the shortcut section and the default grid).
+    public var mostUsed: [String] = []
     public var items: [EmojiItem]
 }
 
 public final class EmojiCatalog: @unchecked Sendable {
     public private(set) var items: [EmojiItem]
-    private var byID: [String: EmojiItem]
+    public let mostUsedIDs: [String]
+    private let byID: [String: EmojiItem]
+    /// Lowercased alias → id, for case-insensitive placeholder lookup.
+    private let aliasIndex: [String: String]
 
-    public init(items: [EmojiItem]) {
+    public init(items: [EmojiItem], mostUsedIDs: [String] = []) {
         self.items = items
+        self.mostUsedIDs = mostUsedIDs
         self.byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var idx: [String: String] = [:]
+        for item in items {
+            for alias in item.aliases + [item.id, item.nameZh, item.nameEn] where !alias.isEmpty {
+                idx[alias.lowercased(), default: item.id] = item.id
+            }
+        }
+        self.aliasIndex = idx
     }
 
-    /// Load from a manifest.json URL; falls back to the built-in set on failure.
+    /// Most-used items resolved through `byID`, keeping the manifest order.
+    public var mostUsed: [EmojiItem] {
+        mostUsedIDs.compactMap { byID[$0] }
+    }
+
+    /// Load from a manifest.json URL; returns an empty catalog on failure
+    /// (no built-in fallback — picker/glyph show a "missing" state instead).
     public static func load(manifestURL: URL?) -> EmojiCatalog {
         guard let url = manifestURL,
               let data = try? Data(contentsOf: url),
-              let manifest = try? JSONDecoder().decode(EmojiManifest.self, from: data),
-              !manifest.items.isEmpty else {
-            return EmojiCatalog(items: builtIn)
+              let manifest = try? JSONDecoder().decode(EmojiManifest.self, from: data) else {
+            return EmojiCatalog(items: [])
         }
-        return EmojiCatalog(items: manifest.items)
+        return EmojiCatalog(items: manifest.items, mostUsedIDs: manifest.mostUsed)
     }
 
     public func item(_ id: String) -> EmojiItem? { byID[id] }
+
+    /// Resolve `[笑哭]`, `笑哭`, `LOL`, `lol` — anything in the alias set —
+    /// to the canonical item. Brackets are stripped if present.
+    public func item(alias raw: String) -> EmojiItem? {
+        var s = raw
+        if s.hasPrefix("["), s.hasSuffix("]") {
+            s = String(s.dropFirst().dropLast())
+        }
+        guard let id = aliasIndex[s.lowercased()] else { return nil }
+        return byID[id]
+    }
 
     public func category(_ name: String) -> [EmojiItem] {
         items.filter { $0.category == name }
@@ -52,20 +96,4 @@ public final class EmojiCatalog: @unchecked Sendable {
         for i in items where !seen.contains(i.category) { seen.append(i.category) }
         return seen
     }
-
-    /// Built-in Unicode fallback, grouped to mirror Lark's picker sections.
-    public static let builtIn: [EmojiItem] = {
-        func mk(_ list: [(String, String)], _ cat: String) -> [EmojiItem] {
-            list.map { EmojiItem(id: $0.0, unicode: $0.1, category: cat, keywords: [$0.0]) }
-        }
-        return mk([("u_thumbsup","👍"),("u_pray","🙏"),("u_check","✅"),
-                   ("u_fire","🔥"),("u_joy","😂"),("u_party","🎉")], "most_used")
-        + mk([("u_grin","😀"),("u_smile","😊"),("u_sweat","😅"),("u_handshake","🤝"),
-               ("u_eyes","👀"),("u_bulb","💡"),("u_rocket","🚀"),("u_warn","⚠️"),
-               ("u_heart","❤️"),("u_cry","😭"),("u_think","🤔"),("u_clap","👏"),
-               ("u_raise","🙌"),("u_muscle","💪"),("u_spark","✨"),("u_celebrate","🥳"),
-               ("u_cool","😎"),("u_salute","🫡")], "default")
-        + mk([("lark_ok","🆗"),("lark_plus1","💯"),("lark_yes","✔️"),
-               ("lark_done","✅"),("lark_no","❌"),("lark_get","📥")], "lark")
-    }()
 }

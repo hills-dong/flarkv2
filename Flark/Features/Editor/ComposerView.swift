@@ -33,6 +33,13 @@ struct ComposerView: View {
             default: return "发布"
             }
         }
+
+        var placeholder: LocalizedStringKey {
+            switch self {
+            case .newTopic, .editTopic: return "写点什么…"
+            case .newReply, .editReply: return "回复点什么…"
+            }
+        }
     }
 
     @Environment(AppModel.self) private var model
@@ -40,20 +47,19 @@ struct ComposerView: View {
 
     let mode: Mode
 
-    @State private var segments: [ContentDocument.Segment]
     @State private var showEmoji = false
     @State private var photo: PhotosPickerItem?
     @FocusState private var focused: Bool
 
     #if os(iOS)
-    @State private var draftAttr: NSAttributedString
+    @State private var draftAttr: NSAttributedString = NSAttributedString()
     @State private var selection = NSRange(location: 0, length: 0)
     @State private var typingStyle: ContentDocument.TextStyle? = nil
 
     private var draftSegments: [ContentDocument.Segment] { segmentsFromAttributed(draftAttr) }
     private var draftPlain: String { draftAttr.string }
     #else
-    @State private var draft: String
+    @State private var draft: String = ""
     private var draftSegments: [ContentDocument.Segment] {
         let t = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? [] : [.text(draft)]
@@ -61,47 +67,46 @@ struct ComposerView: View {
     private var draftPlain: String { draft }
     #endif
 
-    init(mode: Mode) {
-        self.mode = mode
-        // Prefill: split the initial body into (committed prelude + trailing
-        // text/styled run). The trailing run goes into the live editor so it
-        // can be edited; emoji/images and anything preceding them stay above
-        // as already-committed segments. New-* modes start empty.
+    @State private var didPrefill = false
+
+    /// Load the initial body into the editor as one editable WYSIWYG
+    /// attributed string: text / styled text / emoji / images all become
+    /// inline attribute runs (images via `InlineImageAttachment`). Image
+    /// blobs are pulled from `model.loadImage` first so they render with
+    /// real bitmaps; missing blobs still round-trip as zero-sized boxes
+    /// (the segment markers are on the attachment, not on the bytes).
+    private func prefillFromMode() {
         let body = mode.initialBody
-        var prelude: [ContentDocument.Segment] = body.segments
-        var trailing: [ContentDocument.Segment] = []
-        while let last = prelude.last, isInlineText(last) {
-            trailing.insert(prelude.removeLast(), at: 0)
-        }
-        _segments = State(initialValue: prelude)
         #if os(iOS)
-        _draftAttr = State(initialValue: attributedString(fromSegments: trailing))
+        Task {
+            var blobs: [String: Data] = [:]
+            for seg in body.segments {
+                if case .image(let id, _, _) = seg, blobs[id] == nil {
+                    if let d = await model.loadImage(id) { blobs[id] = d }
+                }
+            }
+            let attr = attributedString(fromSegments: body.segments,
+                                        catalog: model.emoji,
+                                        images: blobs)
+            await MainActor.run {
+                draftAttr = attr
+                selection = NSRange(location: attr.length, length: 0)
+            }
+        }
         #else
-        _draft = State(initialValue: trailing.reduce(into: "") { acc, seg in
+        // macOS `TextEditor` can't render inline images; flatten to text.
+        draft = body.segments.reduce(into: "") { acc, seg in
             switch seg {
             case .text(let s), .styledText(let s, _): acc += s
-            default: break
+            case .emoji(let id): acc += (model.emoji.item(id)?.placeholder ?? "[\(id)]")
+            case .image: break
             }
-        })
+        }
         #endif
     }
 
     private var liveDoc: ContentDocument {
-        ContentDocument(segments: segments + draftSegments)
-    }
-
-    private func commitDraft() {
-        segments.append(contentsOf: draftSegments)
-        clearDraft()
-    }
-
-    private func clearDraft() {
-        #if os(iOS)
-        draftAttr = NSAttributedString()
-        selection = NSRange(location: 0, length: 0)
-        #else
-        draft = ""
-        #endif
+        ContentDocument(segments: draftSegments)
     }
 
     /// Splice an emoji into the live editor at the current caret. The image
@@ -122,6 +127,40 @@ struct ComposerView: View {
     }
 
     #if os(iOS)
+    /// Splice an inline image attachment into the editor at the current
+    /// caret. Inserts surrounding newlines only when needed so the image
+    /// lands on its own line; cursor parks on the line after the image so
+    /// the user can keep typing without another tap.
+    private func insertImage(blobID: String, w: Int, h: Int, data: Data?) {
+        let m = NSMutableAttributedString(attributedString: draftAttr)
+        let pos = min(max(selection.location, 0), m.length)
+        let ns = m.string as NSString
+
+        // Newlines just promote the image to its own paragraph; the actual
+        // vertical gutter is controlled by the paragraph style baked into
+        // `imageAttachmentString`, so plain body-font `\n`s are fine here.
+        let nlAttrs = RichTextAttributes.typing(for: nil)
+        let needsLeadingNL = pos > 0 && ns.substring(with: NSRange(location: pos - 1, length: 1)) != "\n"
+        let needsTrailingNL = pos == m.length || ns.substring(with: NSRange(location: pos, length: 1)) != "\n"
+
+        var cursor = pos
+        if needsLeadingNL {
+            m.insert(NSAttributedString(string: "\n", attributes: nlAttrs), at: cursor)
+            cursor += 1
+        }
+        let frag = imageAttachmentString(blobID: blobID, w: w, h: h, data: data)
+        m.insert(frag, at: cursor)
+        cursor += frag.length
+        if needsTrailingNL {
+            m.insert(NSAttributedString(string: "\n", attributes: nlAttrs), at: cursor)
+            cursor += 1
+        }
+        draftAttr = m
+        selection = NSRange(location: cursor, length: 0)
+    }
+    #endif
+
+    #if os(iOS)
     private func toggleStyle(_ style: ContentDocument.TextStyle) {
         if selection.length > 0 {
             // Apply/remove on the current selection. Prior input stays editable.
@@ -138,9 +177,6 @@ struct ComposerView: View {
             VStack(spacing: 14) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
-                        if !segments.isEmpty {
-                            ContentDocumentView(doc: ContentDocument(segments: segments))
-                        }
                         editor
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -218,13 +254,31 @@ struct ComposerView: View {
                 Task {
                     if let data = try? await newValue.loadTransferable(type: Data.self),
                        let up = await model.uploadImage(data) {
-                        commitDraft()
-                        segments.append(.image(blobID: up.id, width: up.w, height: up.h))
+                        #if os(iOS)
+                        // Use the recompressed bytes the model wrote into the
+                        // blob store (via `loadImage`) so the inline preview
+                        // matches what other clients will see, not the raw
+                        // HEIC straight from Photos.
+                        let blob = await model.loadImage(up.id) ?? data
+                        insertImage(blobID: up.id, w: up.w, h: up.h, data: blob)
+                        focused = true
+                        #endif
                     }
                     photo = nil
                 }
             }
-            .onAppear { focused = true }
+            .onAppear {
+                if !didPrefill {
+                    didPrefill = true
+                    prefillFromMode()
+                }
+                // Sheet presentation + keyboard come up reliably together
+                // only after the sheet's transition lands; without a short
+                // delay the first-open keyboard sometimes silently no-ops.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    focused = true
+                }
+            }
         }
     }
 
@@ -232,7 +286,7 @@ struct ComposerView: View {
     private var editor: some View {
         ZStack(alignment: .topLeading) {
             if draftPlain.isEmpty {
-                Text(segments.isEmpty ? "写点什么… 图片和表情直接在此输入框内所见即所得" : "继续输入…")
+                Text(mode.placeholder)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4).padding(.leading, 1)
                     .allowsHitTesting(false)
@@ -241,8 +295,9 @@ struct ComposerView: View {
             RichTextEditor(attributedText: $draftAttr,
                            selection: $selection,
                            typingStyle: $typingStyle,
-                           focused: $focused)
-                .frame(minHeight: 28)
+                           focused: $focused,
+                           autoFocusOnAppear: true)
+                .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
             #else
             TextEditor(text: $draft)
                 .focused($focused)
@@ -275,14 +330,5 @@ struct ComposerView: View {
         #else
         .title3
         #endif
-    }
-}
-
-/// True for inline text-like segments (text or styled text). Emoji and images
-/// are kept as committed segments and not pulled into the live editor.
-private func isInlineText(_ seg: ContentDocument.Segment) -> Bool {
-    switch seg {
-    case .text, .styledText: return true
-    case .emoji, .image: return false
     }
 }

@@ -1,36 +1,3163 @@
 {
+  "mostUsed": [
+    "lol",
+    "facepalm",
+    "thumbsup_v2",
+    "wink",
+    "sob",
+    "cry",
+    "beamingface_v1",
+    "blush",
+    "laugh",
+    "dull",
+    "smirk",
+    "smart",
+    "glance",
+    "yeah",
+    "tears",
+    "thanks_v2",
+    "fighton_v2",
+    "fingerheart_v2",
+    "scowl",
+    "coldsweat_v1",
+    "wow",
+    "enough",
+    "embarrassed",
+    "strive",
+    "blubber",
+    "thanksface_v1",
+    "youarethebest",
+    "bull",
+    "roarforyou",
+    "darkyouarethebest_v1",
+    "lightyouarethebest_v1",
+    "mediumdarkyouarethebest_v1",
+    "mediumlightyouarethebest_v1",
+    "mediumyouarethebest_v1"
+  ],
   "items": [
-    { "id": "u_thumbsup", "unicode": "👍", "category": "most_used", "keywords": ["赞", "good"] },
-    { "id": "u_pray", "unicode": "🙏", "category": "most_used", "keywords": ["谢谢", "拜托"] },
-    { "id": "u_check", "unicode": "✅", "category": "most_used", "keywords": ["完成", "ok"] },
-    { "id": "u_fire", "unicode": "🔥", "category": "most_used", "keywords": ["火", "热"] },
-    { "id": "u_joy", "unicode": "😂", "category": "most_used", "keywords": ["笑", "哈哈"] },
-    { "id": "u_party", "unicode": "🎉", "category": "most_used", "keywords": ["庆祝"] },
-
-    { "id": "u_grin", "unicode": "😀", "category": "default", "keywords": ["开心"] },
-    { "id": "u_smile", "unicode": "😊", "category": "default", "keywords": ["微笑"] },
-    { "id": "u_sweat", "unicode": "😅", "category": "default", "keywords": ["尴尬"] },
-    { "id": "u_handshake", "unicode": "🤝", "category": "default", "keywords": ["合作"] },
-    { "id": "u_eyes", "unicode": "👀", "category": "default", "keywords": ["关注"] },
-    { "id": "u_bulb", "unicode": "💡", "category": "default", "keywords": ["想法"] },
-    { "id": "u_rocket", "unicode": "🚀", "category": "default", "keywords": ["上线", "发布"] },
-    { "id": "u_warn", "unicode": "⚠️", "category": "default", "keywords": ["注意"] },
-    { "id": "u_heart", "unicode": "❤️", "category": "default", "keywords": ["爱"] },
-    { "id": "u_cry", "unicode": "😭", "category": "default", "keywords": ["哭"] },
-    { "id": "u_think", "unicode": "🤔", "category": "default", "keywords": ["思考"] },
-    { "id": "u_clap", "unicode": "👏", "category": "default", "keywords": ["鼓掌"] },
-    { "id": "u_raise", "unicode": "🙌", "category": "default", "keywords": ["举手"] },
-    { "id": "u_muscle", "unicode": "💪", "category": "default", "keywords": ["加油"] },
-    { "id": "u_spark", "unicode": "✨", "category": "default", "keywords": ["闪"] },
-    { "id": "u_celebrate", "unicode": "🥳", "category": "default", "keywords": ["开心"] },
-    { "id": "u_cool", "unicode": "😎", "category": "default", "keywords": ["酷"] },
-    { "id": "u_salute", "unicode": "🫡", "category": "default", "keywords": ["收到"] },
-
-    { "id": "lark_ok", "unicode": "🆗", "category": "lark", "keywords": ["OK"] },
-    { "id": "lark_plus1", "unicode": "💯", "category": "lark", "keywords": ["+1"] },
-    { "id": "lark_yes", "unicode": "✔️", "category": "lark", "keywords": ["YES"] },
-    { "id": "lark_done", "unicode": "✅", "category": "lark", "keywords": ["DONE"] },
-    { "id": "lark_no", "unicode": "❌", "category": "lark", "keywords": ["NO"] },
-    { "id": "lark_get", "unicode": "📥", "category": "lark", "keywords": ["GET"] }
+    {
+      "id": "ok_v2",
+      "file": "lark/ok_v2.png",
+      "nameZh": "OK",
+      "nameEn": "OK",
+      "aliases": [
+        "OK",
+        "ok_v2"
+      ],
+      "category": "default",
+      "keywords": [
+        "ok",
+        "ok_v2"
+      ]
+    },
+    {
+      "id": "thumbsup_v2",
+      "file": "lark/thumbsup_v2.png",
+      "nameZh": "赞",
+      "nameEn": "Like",
+      "aliases": [
+        "Like",
+        "THUMBSUP",
+        "thumbsup_v2",
+        "赞"
+      ],
+      "category": "default",
+      "keywords": [
+        "like",
+        "thumbsup",
+        "thumbsup_v2",
+        "赞"
+      ]
+    },
+    {
+      "id": "thanks_v2",
+      "file": "lark/thanks_v2.png",
+      "nameZh": "双手合十",
+      "nameEn": "FoldedHands",
+      "aliases": [
+        "FoldedHands",
+        "THANKS",
+        "thanks_v2",
+        "双手合十"
+      ],
+      "category": "default",
+      "keywords": [
+        "foldedhands",
+        "thanks",
+        "thanks_v2",
+        "双手合十"
+      ]
+    },
+    {
+      "id": "fighton_v2",
+      "file": "lark/fighton_v2.png",
+      "nameZh": "加油",
+      "nameEn": "FightOn",
+      "aliases": [
+        "FightOn",
+        "MUSCLE",
+        "fighton_v2",
+        "加油"
+      ],
+      "category": "default",
+      "keywords": [
+        "fighton",
+        "fighton_v2",
+        "muscle",
+        "加油"
+      ]
+    },
+    {
+      "id": "fingerheart_v2",
+      "file": "lark/fingerheart_v2.png",
+      "nameZh": "比心",
+      "nameEn": "FingerHeart",
+      "aliases": [
+        "FINGERHEART",
+        "FingerHeart",
+        "fingerheart_v2",
+        "比心"
+      ],
+      "category": "default",
+      "keywords": [
+        "fingerheart",
+        "fingerheart_v2",
+        "比心"
+      ]
+    },
+    {
+      "id": "applaud_v2",
+      "file": "lark/applaud_v2.png",
+      "nameZh": "鼓掌",
+      "nameEn": "Applaud",
+      "aliases": [
+        "APPLAUSE",
+        "Applaud",
+        "applaud_v2",
+        "鼓掌"
+      ],
+      "category": "default",
+      "keywords": [
+        "applaud",
+        "applaud_v2",
+        "applause",
+        "鼓掌"
+      ]
+    },
+    {
+      "id": "fistbump_v2",
+      "file": "lark/fistbump_v2.png",
+      "nameZh": "碰拳",
+      "nameEn": "FistBump",
+      "aliases": [
+        "FISTBUMP",
+        "FistBump",
+        "fistbump_v2",
+        "碰拳"
+      ],
+      "category": "default",
+      "keywords": [
+        "fistbump",
+        "fistbump_v2",
+        "碰拳"
+      ]
+    },
+    {
+      "id": "plusone",
+      "file": "lark/plusone.png",
+      "nameZh": "+1",
+      "nameEn": "+1",
+      "aliases": [
+        "+1",
+        "JIAYI",
+        "plusone"
+      ],
+      "category": "default",
+      "keywords": [
+        "+1",
+        "jiayi",
+        "plusone"
+      ]
+    },
+    {
+      "id": "done",
+      "file": "lark/done.png",
+      "nameZh": "完成",
+      "nameEn": "Done",
+      "aliases": [
+        "DONE",
+        "Done",
+        "done",
+        "完成"
+      ],
+      "category": "default",
+      "keywords": [
+        "done",
+        "完成"
+      ]
+    },
+    {
+      "id": "smile",
+      "file": "lark/smile.png",
+      "nameZh": "微笑",
+      "nameEn": "Smile",
+      "aliases": [
+        "SMILE",
+        "Smile",
+        "smile",
+        "微笑"
+      ],
+      "category": "default",
+      "keywords": [
+        "smile",
+        "微笑"
+      ]
+    },
+    {
+      "id": "delighted_v1",
+      "file": "lark/delighted_v1.png",
+      "nameZh": "愉快",
+      "nameEn": "Delighted",
+      "aliases": [
+        "Delighted",
+        "delighted_v1",
+        "愉快"
+      ],
+      "category": "default",
+      "keywords": [
+        "delighted",
+        "delighted_v1",
+        "愉快"
+      ]
+    },
+    {
+      "id": "beamingface_v1",
+      "file": "lark/beamingface_v1.png",
+      "nameZh": "笑容满面",
+      "nameEn": "BeamingFace",
+      "aliases": [
+        "BeamingFace",
+        "beamingface_v1",
+        "笑容满面"
+      ],
+      "category": "default",
+      "keywords": [
+        "beamingface",
+        "beamingface_v1",
+        "笑容满面"
+      ]
+    },
+    {
+      "id": "blush",
+      "file": "lark/blush.png",
+      "nameZh": "呲牙",
+      "nameEn": "Grin",
+      "aliases": [
+        "BLUSH",
+        "Grin",
+        "blush",
+        "呲牙"
+      ],
+      "category": "default",
+      "keywords": [
+        "blush",
+        "grin",
+        "呲牙"
+      ]
+    },
+    {
+      "id": "laugh",
+      "file": "lark/laugh.png",
+      "nameZh": "大笑",
+      "nameEn": "Laugh",
+      "aliases": [
+        "LAUGH",
+        "Laugh",
+        "laugh",
+        "大笑"
+      ],
+      "category": "default",
+      "keywords": [
+        "laugh",
+        "大笑"
+      ]
+    },
+    {
+      "id": "smirk",
+      "file": "lark/smirk.png",
+      "nameZh": "坏笑",
+      "nameEn": "Smirk",
+      "aliases": [
+        "SMIRK",
+        "Smirk",
+        "smirk",
+        "坏笑"
+      ],
+      "category": "default",
+      "keywords": [
+        "smirk",
+        "坏笑"
+      ]
+    },
+    {
+      "id": "lol",
+      "file": "lark/lol.png",
+      "nameZh": "笑哭",
+      "nameEn": "Lol",
+      "aliases": [
+        "LOL",
+        "Lol",
+        "lol",
+        "笑哭"
+      ],
+      "category": "default",
+      "keywords": [
+        "lol",
+        "笑哭"
+      ]
+    },
+    {
+      "id": "facepalm",
+      "file": "lark/facepalm.png",
+      "nameZh": "捂脸",
+      "nameEn": "Facepalm",
+      "aliases": [
+        "FACEPALM",
+        "Facepalm",
+        "facepalm",
+        "捂脸"
+      ],
+      "category": "default",
+      "keywords": [
+        "facepalm",
+        "捂脸"
+      ]
+    },
+    {
+      "id": "love",
+      "file": "lark/love.png",
+      "nameZh": "送心",
+      "nameEn": "SendingLove",
+      "aliases": [
+        "LOVE",
+        "SendingLove",
+        "love",
+        "送心"
+      ],
+      "category": "default",
+      "keywords": [
+        "love",
+        "sendinglove",
+        "送心"
+      ]
+    },
+    {
+      "id": "wink",
+      "file": "lark/wink.png",
+      "nameZh": "调皮",
+      "nameEn": "Wink",
+      "aliases": [
+        "WINK",
+        "Wink",
+        "wink",
+        "调皮"
+      ],
+      "category": "default",
+      "keywords": [
+        "wink",
+        "调皮"
+      ]
+    },
+    {
+      "id": "proud",
+      "file": "lark/proud.png",
+      "nameZh": "得意",
+      "nameEn": "Proud",
+      "aliases": [
+        "PROUD",
+        "Proud",
+        "proud",
+        "得意"
+      ],
+      "category": "default",
+      "keywords": [
+        "proud",
+        "得意"
+      ]
+    },
+    {
+      "id": "witty",
+      "file": "lark/witty.png",
+      "nameZh": "灵光一闪",
+      "nameEn": "GoodIdea",
+      "aliases": [
+        "GoodIdea",
+        "WITTY",
+        "witty",
+        "灵光一闪"
+      ],
+      "category": "default",
+      "keywords": [
+        "goodidea",
+        "witty",
+        "灵光一闪"
+      ]
+    },
+    {
+      "id": "smart",
+      "file": "lark/smart.png",
+      "nameZh": "机智",
+      "nameEn": "Smart",
+      "aliases": [
+        "SMART",
+        "Smart",
+        "smart",
+        "机智"
+      ],
+      "category": "default",
+      "keywords": [
+        "smart",
+        "机智"
+      ]
+    },
+    {
+      "id": "scowl",
+      "file": "lark/scowl.png",
+      "nameZh": "惊呆",
+      "nameEn": "Dumbstruck",
+      "aliases": [
+        "Dumbstruck",
+        "SCOWL",
+        "scowl",
+        "惊呆"
+      ],
+      "category": "default",
+      "keywords": [
+        "dumbstruck",
+        "scowl",
+        "惊呆"
+      ]
+    },
+    {
+      "id": "thinking",
+      "file": "lark/thinking.png",
+      "nameZh": "思考",
+      "nameEn": "Thinking",
+      "aliases": [
+        "THINKING",
+        "Thinking",
+        "thinking",
+        "思考"
+      ],
+      "category": "default",
+      "keywords": [
+        "thinking",
+        "思考"
+      ]
+    },
+    {
+      "id": "sob",
+      "file": "lark/sob.png",
+      "nameZh": "流泪",
+      "nameEn": "Sob",
+      "aliases": [
+        "SOB",
+        "Sob",
+        "sob",
+        "流泪"
+      ],
+      "category": "default",
+      "keywords": [
+        "sob",
+        "流泪"
+      ]
+    },
+    {
+      "id": "cry",
+      "file": "lark/cry.png",
+      "nameZh": "泣不成声",
+      "nameEn": "CryCoveringMouth",
+      "aliases": [
+        "CRY",
+        "CryCoveringMouth",
+        "cry",
+        "泣不成声"
+      ],
+      "category": "default",
+      "keywords": [
+        "cry",
+        "crycoveringmouth",
+        "泣不成声"
+      ]
+    },
+    {
+      "id": "errr",
+      "file": "lark/errr.png",
+      "nameZh": "黑线",
+      "nameEn": "Errr",
+      "aliases": [
+        "ERROR",
+        "Errr",
+        "errr",
+        "黑线"
+      ],
+      "category": "default",
+      "keywords": [
+        "error",
+        "errr",
+        "黑线"
+      ]
+    },
+    {
+      "id": "nosepick",
+      "file": "lark/nosepick.png",
+      "nameZh": "抠鼻",
+      "nameEn": "NosePick",
+      "aliases": [
+        "NOSEPICK",
+        "NosePick",
+        "nosepick",
+        "抠鼻"
+      ],
+      "category": "default",
+      "keywords": [
+        "nosepick",
+        "抠鼻"
+      ]
+    },
+    {
+      "id": "irritated_v2",
+      "file": "lark/irritated_v2.png",
+      "nameZh": "烦躁",
+      "nameEn": "Irritated",
+      "aliases": [
+        "HAUGHTY",
+        "Irritated",
+        "irritated_v2",
+        "烦躁"
+      ],
+      "category": "default",
+      "keywords": [
+        "haughty",
+        "irritated",
+        "irritated_v2",
+        "烦躁"
+      ]
+    },
+    {
+      "id": "slap",
+      "file": "lark/slap.png",
+      "nameZh": "打脸",
+      "nameEn": "Slap",
+      "aliases": [
+        "SLAP",
+        "Slap",
+        "slap",
+        "打脸"
+      ],
+      "category": "default",
+      "keywords": [
+        "slap",
+        "打脸"
+      ]
+    },
+    {
+      "id": "spitblood",
+      "file": "lark/spitblood.png",
+      "nameZh": "吐血",
+      "nameEn": "SpitBlood",
+      "aliases": [
+        "SPITBLOOD",
+        "SpitBlood",
+        "spitblood",
+        "吐血"
+      ],
+      "category": "default",
+      "keywords": [
+        "spitblood",
+        "吐血"
+      ]
+    },
+    {
+      "id": "toasted",
+      "file": "lark/toasted.png",
+      "nameZh": "衰",
+      "nameEn": "Roasted",
+      "aliases": [
+        "Roasted",
+        "TOASTED",
+        "toasted",
+        "衰"
+      ],
+      "category": "default",
+      "keywords": [
+        "roasted",
+        "toasted",
+        "衰"
+      ]
+    },
+    {
+      "id": "coldsweat_v1",
+      "file": "lark/coldsweat_v1.png",
+      "nameZh": "冷汗",
+      "nameEn": "ColdSweat",
+      "aliases": [
+        "ColdSweat",
+        "coldsweat_v1",
+        "冷汗"
+      ],
+      "category": "default",
+      "keywords": [
+        "coldsweat",
+        "coldsweat_v1",
+        "冷汗"
+      ]
+    },
+    {
+      "id": "blackface",
+      "file": "lark/blackface.png",
+      "nameZh": "新月脸",
+      "nameEn": "NewMoonFace",
+      "aliases": [
+        "BLACKFACE",
+        "NewMoonFace",
+        "blackface",
+        "新月脸"
+      ],
+      "category": "default",
+      "keywords": [
+        "blackface",
+        "newmoonface",
+        "新月脸"
+      ]
+    },
+    {
+      "id": "fullmoonface_v1",
+      "file": "lark/fullmoonface_v1.png",
+      "nameZh": "满月脸",
+      "nameEn": "FullMoonFace",
+      "aliases": [
+        "FullMoonFace",
+        "fullmoonface_v1",
+        "满月脸"
+      ],
+      "category": "default",
+      "keywords": [
+        "fullmoonface",
+        "fullmoonface_v1",
+        "满月脸"
+      ]
+    },
+    {
+      "id": "glance",
+      "file": "lark/glance.png",
+      "nameZh": "看",
+      "nameEn": "Glance",
+      "aliases": [
+        "GLANCE",
+        "Glance",
+        "glance",
+        "看"
+      ],
+      "category": "default",
+      "keywords": [
+        "glance",
+        "看"
+      ]
+    },
+    {
+      "id": "dull",
+      "file": "lark/dull.png",
+      "nameZh": "呆无辜",
+      "nameEn": "Dull",
+      "aliases": [
+        "DULL",
+        "Dull",
+        "dull",
+        "呆无辜"
+      ],
+      "category": "default",
+      "keywords": [
+        "dull",
+        "呆无辜"
+      ]
+    },
+    {
+      "id": "rose",
+      "file": "lark/rose.png",
+      "nameZh": "玫瑰",
+      "nameEn": "Rose",
+      "aliases": [
+        "ROSE",
+        "Rose",
+        "rose",
+        "玫瑰"
+      ],
+      "category": "default",
+      "keywords": [
+        "rose",
+        "玫瑰"
+      ]
+    },
+    {
+      "id": "heart",
+      "file": "lark/heart.png",
+      "nameZh": "爱心",
+      "nameEn": "Heart",
+      "aliases": [
+        "HEART",
+        "Heart",
+        "heart",
+        "爱心"
+      ],
+      "category": "default",
+      "keywords": [
+        "heart",
+        "爱心"
+      ]
+    },
+    {
+      "id": "hearts_v2",
+      "file": "lark/hearts_v2.png",
+      "nameZh": "爱心",
+      "nameEn": "Heart",
+      "aliases": [
+        "HEART",
+        "Heart",
+        "hearts_v2",
+        "爱心"
+      ],
+      "category": "default",
+      "keywords": [
+        "heart",
+        "hearts_v2",
+        "爱心"
+      ]
+    },
+    {
+      "id": "party",
+      "file": "lark/party.png",
+      "nameZh": "撒花",
+      "nameEn": "PartyPopper",
+      "aliases": [
+        "PARTY",
+        "PartyPopper",
+        "party",
+        "撒花"
+      ],
+      "category": "default",
+      "keywords": [
+        "party",
+        "partypopper",
+        "撒花"
+      ]
+    },
+    {
+      "id": "innocentsmile",
+      "file": "lark/innocentsmile.png",
+      "nameZh": "无辜笑",
+      "nameEn": "Innocent",
+      "aliases": [
+        "INNOCENTSMILE",
+        "Innocent",
+        "innocentsmile",
+        "无辜笑"
+      ],
+      "category": "default",
+      "keywords": [
+        "innocent",
+        "innocentsmile",
+        "无辜笑"
+      ]
+    },
+    {
+      "id": "shy",
+      "file": "lark/shy.png",
+      "nameZh": "害羞",
+      "nameEn": "Shy",
+      "aliases": [
+        "SHY",
+        "Shy",
+        "shy",
+        "害羞"
+      ],
+      "category": "default",
+      "keywords": [
+        "shy",
+        "害羞"
+      ]
+    },
+    {
+      "id": "chuckle",
+      "file": "lark/chuckle.png",
+      "nameZh": "偷笑",
+      "nameEn": "Chuckle",
+      "aliases": [
+        "CHUCKLE",
+        "Chuckle",
+        "chuckle",
+        "偷笑"
+      ],
+      "category": "default",
+      "keywords": [
+        "chuckle",
+        "偷笑"
+      ]
+    },
+    {
+      "id": "joyful",
+      "file": "lark/joyful.png",
+      "nameZh": "笑",
+      "nameEn": "Joyful",
+      "aliases": [
+        "JOYFUL",
+        "Joyful",
+        "joyful",
+        "笑"
+      ],
+      "category": "default",
+      "keywords": [
+        "joyful",
+        "笑"
+      ]
+    },
+    {
+      "id": "wow",
+      "file": "lark/wow.png",
+      "nameZh": "惊喜",
+      "nameEn": "Wow",
+      "aliases": [
+        "WOW",
+        "Wow",
+        "wow",
+        "惊喜"
+      ],
+      "category": "default",
+      "keywords": [
+        "wow",
+        "惊喜"
+      ]
+    },
+    {
+      "id": "trick",
+      "file": "lark/trick.png",
+      "nameZh": "嬉笑",
+      "nameEn": "Teehee",
+      "aliases": [
+        "TRICK",
+        "Teehee",
+        "trick",
+        "嬉笑"
+      ],
+      "category": "default",
+      "keywords": [
+        "teehee",
+        "trick",
+        "嬉笑"
+      ]
+    },
+    {
+      "id": "yeah",
+      "file": "lark/yeah.png",
+      "nameZh": "耶",
+      "nameEn": "Yay",
+      "aliases": [
+        "YEAH",
+        "Yay",
+        "yeah",
+        "耶"
+      ],
+      "category": "default",
+      "keywords": [
+        "yay",
+        "yeah",
+        "耶"
+      ]
+    },
+    {
+      "id": "enough",
+      "file": "lark/enough.png",
+      "nameZh": "我想静静",
+      "nameEn": "Enough",
+      "aliases": [
+        "ENOUGH",
+        "Enough",
+        "enough",
+        "我想静静"
+      ],
+      "category": "default",
+      "keywords": [
+        "enough",
+        "我想静静"
+      ]
+    },
+    {
+      "id": "tears",
+      "file": "lark/tears.png",
+      "nameZh": "泪奔",
+      "nameEn": "Tears",
+      "aliases": [
+        "TEARS",
+        "Tears",
+        "tears",
+        "泪奔"
+      ],
+      "category": "default",
+      "keywords": [
+        "tears",
+        "泪奔"
+      ]
+    },
+    {
+      "id": "embarrassed",
+      "file": "lark/embarrassed.png",
+      "nameZh": "尬笑",
+      "nameEn": "Embarrassed",
+      "aliases": [
+        "EMBARRASSED",
+        "Embarrassed",
+        "embarrassed",
+        "尬笑"
+      ],
+      "category": "default",
+      "keywords": [
+        "embarrassed",
+        "尬笑"
+      ]
+    },
+    {
+      "id": "kiss",
+      "file": "lark/kiss.png",
+      "nameZh": "亲亲",
+      "nameEn": "Mwah",
+      "aliases": [
+        "KISS",
+        "Mwah",
+        "kiss",
+        "亲亲"
+      ],
+      "category": "default",
+      "keywords": [
+        "kiss",
+        "mwah",
+        "亲亲"
+      ]
+    },
+    {
+      "id": "smooch",
+      "file": "lark/smooch.png",
+      "nameZh": "飞吻",
+      "nameEn": "Blowkiss",
+      "aliases": [
+        "Blowkiss",
+        "SMOOCH",
+        "smooch",
+        "飞吻"
+      ],
+      "category": "default",
+      "keywords": [
+        "blowkiss",
+        "smooch",
+        "飞吻"
+      ]
+    },
+    {
+      "id": "drool",
+      "file": "lark/drool.png",
+      "nameZh": "爱慕",
+      "nameEn": "Adore",
+      "aliases": [
+        "Adore",
+        "DROOL",
+        "drool",
+        "爱慕"
+      ],
+      "category": "default",
+      "keywords": [
+        "adore",
+        "drool",
+        "爱慕"
+      ]
+    },
+    {
+      "id": "money",
+      "file": "lark/money.png",
+      "nameZh": "财迷",
+      "nameEn": "MoneyLover",
+      "aliases": [
+        "MONEY",
+        "MoneyLover",
+        "money",
+        "财迷"
+      ],
+      "category": "default",
+      "keywords": [
+        "money",
+        "moneylover",
+        "财迷"
+      ]
+    },
+    {
+      "id": "tease",
+      "file": "lark/tease.png",
+      "nameZh": "做鬼脸",
+      "nameEn": "ZanyFace",
+      "aliases": [
+        "TEASE",
+        "ZanyFace",
+        "tease",
+        "做鬼脸"
+      ],
+      "category": "default",
+      "keywords": [
+        "tease",
+        "zanyface",
+        "做鬼脸"
+      ]
+    },
+    {
+      "id": "showoff",
+      "file": "lark/showoff.png",
+      "nameZh": "酷",
+      "nameEn": "Cool",
+      "aliases": [
+        "Cool",
+        "SHOWOFF",
+        "showoff",
+        "酷"
+      ],
+      "category": "default",
+      "keywords": [
+        "cool",
+        "showoff",
+        "酷"
+      ]
+    },
+    {
+      "id": "comfort",
+      "file": "lark/comfort.png",
+      "nameZh": "摸头",
+      "nameEn": "Comfort",
+      "aliases": [
+        "COMFORT",
+        "Comfort",
+        "comfort",
+        "摸头"
+      ],
+      "category": "default",
+      "keywords": [
+        "comfort",
+        "摸头"
+      ]
+    },
+    {
+      "id": "clap",
+      "file": "lark/clap.png",
+      "nameZh": "欢呼",
+      "nameEn": "Hooray",
+      "aliases": [
+        "CLAP",
+        "Hooray",
+        "clap",
+        "欢呼"
+      ],
+      "category": "default",
+      "keywords": [
+        "clap",
+        "hooray",
+        "欢呼"
+      ]
+    },
+    {
+      "id": "praise",
+      "file": "lark/praise.png",
+      "nameZh": "强",
+      "nameEn": "Praise",
+      "aliases": [
+        "PRAISE",
+        "Praise",
+        "praise",
+        "强"
+      ],
+      "category": "default",
+      "keywords": [
+        "praise",
+        "强"
+      ]
+    },
+    {
+      "id": "strive",
+      "file": "lark/strive.png",
+      "nameZh": "奋斗",
+      "nameEn": "Determined",
+      "aliases": [
+        "Determined",
+        "STRIVE",
+        "strive",
+        "奋斗"
+      ],
+      "category": "default",
+      "keywords": [
+        "determined",
+        "strive",
+        "奋斗"
+      ]
+    },
+    {
+      "id": "silent",
+      "file": "lark/silent.png",
+      "nameZh": "闭嘴",
+      "nameEn": "Silent",
+      "aliases": [
+        "SILENT",
+        "Silent",
+        "silent",
+        "闭嘴"
+      ],
+      "category": "default",
+      "keywords": [
+        "silent",
+        "闭嘴"
+      ]
+    },
+    {
+      "id": "wave",
+      "file": "lark/wave.png",
+      "nameZh": "再见",
+      "nameEn": "Bye",
+      "aliases": [
+        "Bye",
+        "WAVE",
+        "wave",
+        "再见"
+      ],
+      "category": "default",
+      "keywords": [
+        "bye",
+        "wave",
+        "再见"
+      ]
+    },
+    {
+      "id": "what",
+      "file": "lark/what.png",
+      "nameZh": "什么？",
+      "nameEn": "What?",
+      "aliases": [
+        "WHAT",
+        "What?",
+        "what",
+        "什么？"
+      ],
+      "category": "default",
+      "keywords": [
+        "what",
+        "what?",
+        "什么？"
+      ]
+    },
+    {
+      "id": "frown",
+      "file": "lark/frown.png",
+      "nameZh": "皱眉",
+      "nameEn": "Frown",
+      "aliases": [
+        "FROWN",
+        "Frown",
+        "frown",
+        "皱眉"
+      ],
+      "category": "default",
+      "keywords": [
+        "frown",
+        "皱眉"
+      ]
+    },
+    {
+      "id": "dizzy",
+      "file": "lark/dizzy.png",
+      "nameZh": "晕",
+      "nameEn": "Dizzy",
+      "aliases": [
+        "DIZZY",
+        "Dizzy",
+        "dizzy",
+        "晕"
+      ],
+      "category": "default",
+      "keywords": [
+        "dizzy",
+        "晕"
+      ]
+    },
+    {
+      "id": "lookdown",
+      "file": "lark/lookdown.png",
+      "nameZh": "鄙视",
+      "nameEn": "Despise",
+      "aliases": [
+        "Despise",
+        "LOOKDOWN",
+        "lookdown",
+        "鄙视"
+      ],
+      "category": "default",
+      "keywords": [
+        "despise",
+        "lookdown",
+        "鄙视"
+      ]
+    },
+    {
+      "id": "wail",
+      "file": "lark/wail.png",
+      "nameZh": "大哭",
+      "nameEn": "Wail",
+      "aliases": [
+        "WAIL",
+        "Wail",
+        "wail",
+        "大哭"
+      ],
+      "category": "default",
+      "keywords": [
+        "wail",
+        "大哭"
+      ]
+    },
+    {
+      "id": "crazy",
+      "file": "lark/crazy.png",
+      "nameZh": "抓狂",
+      "nameEn": "Screaming",
+      "aliases": [
+        "CRAZY",
+        "Screaming",
+        "crazy",
+        "抓狂"
+      ],
+      "category": "default",
+      "keywords": [
+        "crazy",
+        "screaming",
+        "抓狂"
+      ]
+    },
+    {
+      "id": "whimper",
+      "file": "lark/whimper.png",
+      "nameZh": "可怜",
+      "nameEn": "Pleading",
+      "aliases": [
+        "Pleading",
+        "WHIMPER",
+        "whimper",
+        "可怜"
+      ],
+      "category": "default",
+      "keywords": [
+        "pleading",
+        "whimper",
+        "可怜"
+      ]
+    },
+    {
+      "id": "hug",
+      "file": "lark/hug.png",
+      "nameZh": "求抱抱",
+      "nameEn": "Hug",
+      "aliases": [
+        "HUG",
+        "Hug",
+        "hug",
+        "求抱抱"
+      ],
+      "category": "default",
+      "keywords": [
+        "hug",
+        "求抱抱"
+      ]
+    },
+    {
+      "id": "blubber",
+      "file": "lark/blubber.png",
+      "nameZh": "快哭了",
+      "nameEn": "TearingUp",
+      "aliases": [
+        "BLUBBER",
+        "TearingUp",
+        "blubber",
+        "快哭了"
+      ],
+      "category": "default",
+      "keywords": [
+        "blubber",
+        "tearingup",
+        "快哭了"
+      ]
+    },
+    {
+      "id": "wronged",
+      "file": "lark/wronged.png",
+      "nameZh": "委屈",
+      "nameEn": "Hurt",
+      "aliases": [
+        "Hurt",
+        "WRONGED",
+        "wronged",
+        "委屈"
+      ],
+      "category": "default",
+      "keywords": [
+        "hurt",
+        "wronged",
+        "委屈"
+      ]
+    },
+    {
+      "id": "husky",
+      "file": "lark/husky.png",
+      "nameZh": "翻白眼",
+      "nameEn": "RollEyes",
+      "aliases": [
+        "HUSKY",
+        "RollEyes",
+        "husky",
+        "翻白眼"
+      ],
+      "category": "default",
+      "keywords": [
+        "husky",
+        "rolleyes",
+        "翻白眼"
+      ]
+    },
+    {
+      "id": "shhh",
+      "file": "lark/shhh.png",
+      "nameZh": "嘘",
+      "nameEn": "ShushingFace",
+      "aliases": [
+        "SHHH",
+        "ShushingFace",
+        "shhh",
+        "嘘"
+      ],
+      "category": "default",
+      "keywords": [
+        "shhh",
+        "shushingface",
+        "嘘"
+      ]
+    },
+    {
+      "id": "smug",
+      "file": "lark/smug.png",
+      "nameZh": "撇嘴",
+      "nameEn": "Hmph",
+      "aliases": [
+        "Hmph",
+        "SMUG",
+        "smug",
+        "撇嘴"
+      ],
+      "category": "default",
+      "keywords": [
+        "hmph",
+        "smug",
+        "撇嘴"
+      ]
+    },
+    {
+      "id": "angry",
+      "file": "lark/angry.png",
+      "nameZh": "发怒",
+      "nameEn": "Angry",
+      "aliases": [
+        "ANGRY",
+        "Angry",
+        "angry",
+        "发怒"
+      ],
+      "category": "default",
+      "keywords": [
+        "angry",
+        "发怒"
+      ]
+    },
+    {
+      "id": "hammer_v1",
+      "file": "lark/hammer_v1.png",
+      "nameZh": "敲打",
+      "nameEn": "Hit",
+      "aliases": [
+        "HAMMER",
+        "Hit",
+        "hammer_v1",
+        "敲打"
+      ],
+      "category": "default",
+      "keywords": [
+        "hammer",
+        "hammer_v1",
+        "hit",
+        "敲打"
+      ]
+    },
+    {
+      "id": "shocked",
+      "file": "lark/shocked.png",
+      "nameZh": "震惊",
+      "nameEn": "Shocked",
+      "aliases": [
+        "SHOCKED",
+        "Shocked",
+        "shocked",
+        "震惊"
+      ],
+      "category": "default",
+      "keywords": [
+        "shocked",
+        "震惊"
+      ]
+    },
+    {
+      "id": "terror",
+      "file": "lark/terror.png",
+      "nameZh": "惊恐",
+      "nameEn": "Terrified",
+      "aliases": [
+        "TERROR",
+        "Terrified",
+        "terror",
+        "惊恐"
+      ],
+      "category": "default",
+      "keywords": [
+        "terrified",
+        "terror",
+        "惊恐"
+      ]
+    },
+    {
+      "id": "petrified",
+      "file": "lark/petrified.png",
+      "nameZh": "石化",
+      "nameEn": "Petrified",
+      "aliases": [
+        "PETRIFIED",
+        "Petrified",
+        "petrified",
+        "石化"
+      ],
+      "category": "default",
+      "keywords": [
+        "petrified",
+        "石化"
+      ]
+    },
+    {
+      "id": "skull",
+      "file": "lark/skull.png",
+      "nameZh": "骷髅",
+      "nameEn": "Skull",
+      "aliases": [
+        "SKULL",
+        "Skull",
+        "skull",
+        "骷髅"
+      ],
+      "category": "default",
+      "keywords": [
+        "skull",
+        "骷髅"
+      ]
+    },
+    {
+      "id": "sweat",
+      "file": "lark/sweat.png",
+      "nameZh": "汗",
+      "nameEn": "Sweat",
+      "aliases": [
+        "SWEAT",
+        "Sweat",
+        "sweat",
+        "汗"
+      ],
+      "category": "default",
+      "keywords": [
+        "sweat",
+        "汗"
+      ]
+    },
+    {
+      "id": "speechless",
+      "file": "lark/speechless.png",
+      "nameZh": "无语",
+      "nameEn": "Speechless",
+      "aliases": [
+        "SPEECHLESS",
+        "Speechless",
+        "speechless",
+        "无语"
+      ],
+      "category": "default",
+      "keywords": [
+        "speechless",
+        "无语"
+      ]
+    },
+    {
+      "id": "sleep",
+      "file": "lark/sleep.png",
+      "nameZh": "鼾睡",
+      "nameEn": "Sleeping",
+      "aliases": [
+        "SLEEP",
+        "Sleeping",
+        "sleep",
+        "鼾睡"
+      ],
+      "category": "default",
+      "keywords": [
+        "sleep",
+        "sleeping",
+        "鼾睡"
+      ]
+    },
+    {
+      "id": "drowsy",
+      "file": "lark/drowsy.png",
+      "nameZh": "困",
+      "nameEn": "Sleepy",
+      "aliases": [
+        "DROWSY",
+        "Sleepy",
+        "drowsy",
+        "困"
+      ],
+      "category": "default",
+      "keywords": [
+        "drowsy",
+        "sleepy",
+        "困"
+      ]
+    },
+    {
+      "id": "yawn",
+      "file": "lark/yawn.png",
+      "nameZh": "哈欠",
+      "nameEn": "Yawn",
+      "aliases": [
+        "YAWN",
+        "Yawn",
+        "yawn",
+        "哈欠"
+      ],
+      "category": "default",
+      "keywords": [
+        "yawn",
+        "哈欠"
+      ]
+    },
+    {
+      "id": "sick",
+      "file": "lark/sick.png",
+      "nameZh": "戴口罩",
+      "nameEn": "Mask",
+      "aliases": [
+        "Mask",
+        "SICK",
+        "sick",
+        "戴口罩"
+      ],
+      "category": "default",
+      "keywords": [
+        "mask",
+        "sick",
+        "戴口罩"
+      ]
+    },
+    {
+      "id": "puke",
+      "file": "lark/puke.png",
+      "nameZh": "吐",
+      "nameEn": "Vomiting",
+      "aliases": [
+        "PUKE",
+        "Vomiting",
+        "puke",
+        "吐"
+      ],
+      "category": "default",
+      "keywords": [
+        "puke",
+        "vomiting",
+        "吐"
+      ]
+    },
+    {
+      "id": "betrayed",
+      "file": "lark/betrayed.png",
+      "nameZh": "背叛",
+      "nameEn": "Betrayed",
+      "aliases": [
+        "BETRAYED",
+        "Betrayed",
+        "betrayed",
+        "背叛"
+      ],
+      "category": "default",
+      "keywords": [
+        "betrayed",
+        "背叛"
+      ]
+    },
+    {
+      "id": "headset_v3",
+      "file": "lark/headset_v3.png",
+      "nameZh": "听歌",
+      "nameEn": "ListeningToMusic",
+      "aliases": [
+        "HEADSET",
+        "ListeningToMusic",
+        "headset_v3",
+        "听歌"
+      ],
+      "category": "default",
+      "keywords": [
+        "headset",
+        "headset_v3",
+        "listeningtomusic",
+        "听歌"
+      ]
+    },
+    {
+      "id": "eatingfood_v2",
+      "file": "lark/eatingfood_v2.png",
+      "nameZh": "吃饭",
+      "nameEn": "Eating",
+      "aliases": [
+        "Eating",
+        "EatingFood",
+        "eatingfood_v2",
+        "吃饭"
+      ],
+      "category": "default",
+      "keywords": [
+        "eating",
+        "eatingfood",
+        "eatingfood_v2",
+        "吃饭"
+      ]
+    },
+    {
+      "id": "typing",
+      "file": "lark/typing.png",
+      "nameZh": "敲键盘",
+      "nameEn": "Typing",
+      "aliases": [
+        "Typing",
+        "typing",
+        "敲键盘"
+      ],
+      "category": "default",
+      "keywords": [
+        "typing",
+        "敲键盘"
+      ]
+    },
+    {
+      "id": "lemon_v2",
+      "file": "lark/lemon_v2.png",
+      "nameZh": "柠檬",
+      "nameEn": "Sour",
+      "aliases": [
+        "Lemon",
+        "Sour",
+        "lemon_v2",
+        "柠檬"
+      ],
+      "category": "default",
+      "keywords": [
+        "lemon",
+        "lemon_v2",
+        "sour",
+        "柠檬"
+      ]
+    },
+    {
+      "id": "get_v3",
+      "file": "lark/get_v3.png",
+      "nameZh": "了解",
+      "nameEn": "GotIt",
+      "aliases": [
+        "Get",
+        "GotIt",
+        "get_v3",
+        "了解"
+      ],
+      "category": "default",
+      "keywords": [
+        "get",
+        "get_v3",
+        "gotit",
+        "了解"
+      ]
+    },
+    {
+      "id": "lgtm_v3",
+      "file": "lark/lgtm_v3.png",
+      "nameZh": "我看行",
+      "nameEn": "LooksGoodToMe",
+      "aliases": [
+        "LGTM",
+        "LooksGoodToMe",
+        "lgtm_v3",
+        "我看行"
+      ],
+      "category": "default",
+      "keywords": [
+        "lgtm",
+        "lgtm_v3",
+        "looksgoodtome",
+        "我看行"
+      ]
+    },
+    {
+      "id": "onit_v1",
+      "file": "lark/onit_v1.png",
+      "nameZh": "在做了",
+      "nameEn": "WorkingOnIt",
+      "aliases": [
+        "OnIt",
+        "WorkingOnIt",
+        "onit_v1",
+        "在做了"
+      ],
+      "category": "default",
+      "keywords": [
+        "onit",
+        "onit_v1",
+        "workingonit",
+        "在做了"
+      ]
+    },
+    {
+      "id": "onesecond",
+      "file": "lark/onesecond.png",
+      "nameZh": "稍等",
+      "nameEn": "OneSecond",
+      "aliases": [
+        "OneSecond",
+        "onesecond",
+        "稍等"
+      ],
+      "category": "default",
+      "keywords": [
+        "onesecond",
+        "稍等"
+      ]
+    },
+    {
+      "id": "sigh",
+      "file": "lark/sigh.png",
+      "nameZh": "叹气",
+      "nameEn": "Sigh",
+      "aliases": [
+        "Sigh",
+        "sigh",
+        "叹气"
+      ],
+      "category": "default",
+      "keywords": [
+        "sigh",
+        "叹气"
+      ]
+    },
+    {
+      "id": "mememe",
+      "file": "lark/mememe.png",
+      "nameZh": "举手",
+      "nameEn": "Me!Me!Me!",
+      "aliases": [
+        "Me!Me!Me!",
+        "MeMeMe",
+        "mememe",
+        "举手"
+      ],
+      "category": "default",
+      "keywords": [
+        "me!me!me!",
+        "mememe",
+        "举手"
+      ]
+    },
+    {
+      "id": "vrheadset_v1",
+      "file": "lark/vrheadset_v1.png",
+      "nameZh": "VR",
+      "nameEn": "VR",
+      "aliases": [
+        "VR",
+        "VRHeadset",
+        "vrheadset_v1"
+      ],
+      "category": "default",
+      "keywords": [
+        "vr",
+        "vrheadset",
+        "vrheadset_v1"
+      ]
+    },
+    {
+      "id": "gogogo_v4",
+      "file": "lark/gogogo_v4.png",
+      "nameZh": "冲！",
+      "nameEn": "Go!Go!Go!",
+      "aliases": [
+        "Go!Go!Go!",
+        "GoGoGo",
+        "gogogo_v4",
+        "冲！"
+      ],
+      "category": "default",
+      "keywords": [
+        "go!go!go!",
+        "gogogo",
+        "gogogo_v4",
+        "冲！"
+      ]
+    },
+    {
+      "id": "partying_v1",
+      "file": "lark/partying_v1.png",
+      "nameZh": "派对",
+      "nameEn": "Partying",
+      "aliases": [
+        "Partying",
+        "partying_v1",
+        "派对"
+      ],
+      "category": "default",
+      "keywords": [
+        "partying",
+        "partying_v1",
+        "派对"
+      ]
+    },
+    {
+      "id": "thanksface_v1",
+      "file": "lark/thanksface_v1.png",
+      "nameZh": "感谢",
+      "nameEn": "Thanks",
+      "aliases": [
+        "Thanks",
+        "ThanksFace",
+        "thanksface_v1",
+        "感谢"
+      ],
+      "category": "default",
+      "keywords": [
+        "thanks",
+        "thanksface",
+        "thanksface_v1",
+        "感谢"
+      ]
+    },
+    {
+      "id": "saluteface_v1",
+      "file": "lark/saluteface_v1.png",
+      "nameZh": "致敬",
+      "nameEn": "Salute",
+      "aliases": [
+        "Salute",
+        "SaluteFace",
+        "saluteface_v1",
+        "致敬"
+      ],
+      "category": "default",
+      "keywords": [
+        "salute",
+        "saluteface",
+        "saluteface_v1",
+        "致敬"
+      ]
+    },
+    {
+      "id": "shrug_v1",
+      "file": "lark/shrug_v1.png",
+      "nameZh": "耸肩摊手",
+      "nameEn": "Shrug",
+      "aliases": [
+        "Shrug",
+        "shrug_v1",
+        "耸肩摊手"
+      ],
+      "category": "default",
+      "keywords": [
+        "shrug",
+        "shrug_v1",
+        "耸肩摊手"
+      ]
+    },
+    {
+      "id": "youarethebest",
+      "file": "lark/youarethebest.png",
+      "nameZh": "送你小红花",
+      "nameEn": "YouAreTheBest",
+      "aliases": [
+        "YouAreTheBest",
+        "youarethebest",
+        "送你小红花"
+      ],
+      "category": "default",
+      "keywords": [
+        "youarethebest",
+        "送你小红花"
+      ]
+    },
+    {
+      "id": "salute_v2",
+      "file": "lark/salute_v2.png",
+      "nameZh": "抱拳",
+      "nameEn": "HoldFistSalut",
+      "aliases": [
+        "HoldFistSalut",
+        "SALUTE",
+        "salute_v2",
+        "抱拳"
+      ],
+      "category": "default",
+      "keywords": [
+        "holdfistsalut",
+        "salute",
+        "salute_v2",
+        "抱拳"
+      ]
+    },
+    {
+      "id": "shake_v2",
+      "file": "lark/shake_v2.png",
+      "nameZh": "握手",
+      "nameEn": "Handshake",
+      "aliases": [
+        "Handshake",
+        "SHAKE",
+        "shake_v2",
+        "握手"
+      ],
+      "category": "default",
+      "keywords": [
+        "handshake",
+        "shake",
+        "shake_v2",
+        "握手"
+      ]
+    },
+    {
+      "id": "highfive_v2",
+      "file": "lark/highfive_v2.png",
+      "nameZh": "击掌",
+      "nameEn": "HighFive",
+      "aliases": [
+        "HIGHFIVE",
+        "HighFive",
+        "highfive_v2",
+        "击掌"
+      ],
+      "category": "default",
+      "keywords": [
+        "highfive",
+        "highfive_v2",
+        "击掌"
+      ]
+    },
+    {
+      "id": "wavinghand_v1",
+      "file": "lark/wavinghand_v1.png",
+      "nameZh": "挥手",
+      "nameEn": "WavingHand",
+      "aliases": [
+        "WavingHand",
+        "wavinghand_v1",
+        "挥手"
+      ],
+      "category": "default",
+      "keywords": [
+        "wavinghand",
+        "wavinghand_v1",
+        "挥手"
+      ]
+    },
+    {
+      "id": "click_v2",
+      "file": "lark/click_v2.png",
+      "nameZh": "点击",
+      "nameEn": "Click",
+      "aliases": [
+        "Click",
+        "UPPERLEFT",
+        "click_v2",
+        "点击"
+      ],
+      "category": "default",
+      "keywords": [
+        "click",
+        "click_v2",
+        "upperleft",
+        "点击"
+      ]
+    },
+    {
+      "id": "thumbsdown_v2",
+      "file": "lark/thumbsdown_v2.png",
+      "nameZh": "踩",
+      "nameEn": "Dislike",
+      "aliases": [
+        "Dislike",
+        "ThumbsDown",
+        "thumbsdown_v2",
+        "踩"
+      ],
+      "category": "default",
+      "keywords": [
+        "dislike",
+        "thumbsdown",
+        "thumbsdown_v2",
+        "踩"
+      ]
+    },
+    {
+      "id": "clownface_v1",
+      "file": "lark/clownface_v1.png",
+      "nameZh": "小丑脸",
+      "nameEn": "ClownFace",
+      "aliases": [
+        "ClownFace",
+        "clownface_v1",
+        "小丑脸"
+      ],
+      "category": "default",
+      "keywords": [
+        "clownface",
+        "clownface_v1",
+        "小丑脸"
+      ]
+    },
+    {
+      "id": "slight",
+      "file": "lark/slight.png",
+      "nameZh": "白眼",
+      "nameEn": "SideGlance",
+      "aliases": [
+        "SLIGHT",
+        "SideGlance",
+        "slight",
+        "白眼"
+      ],
+      "category": "default",
+      "keywords": [
+        "sideglance",
+        "slight",
+        "白眼"
+      ]
+    },
+    {
+      "id": "tongue",
+      "file": "lark/tongue.png",
+      "nameZh": "吐舌",
+      "nameEn": "TongueOut",
+      "aliases": [
+        "TONGUE",
+        "TongueOut",
+        "tongue",
+        "吐舌"
+      ],
+      "category": "default",
+      "keywords": [
+        "tongue",
+        "tongueout",
+        "吐舌"
+      ]
+    },
+    {
+      "id": "eyesclosed",
+      "file": "lark/eyesclosed.png",
+      "nameZh": "不看",
+      "nameEn": "SeeNoEvilMonkey",
+      "aliases": [
+        "EYESCLOSED",
+        "SeeNoEvilMonkey",
+        "eyesclosed",
+        "不看"
+      ],
+      "category": "default",
+      "keywords": [
+        "eyesclosed",
+        "seenoevilmonkey",
+        "不看"
+      ]
+    },
+    {
+      "id": "bear",
+      "file": "lark/bear.png",
+      "nameZh": "啊？",
+      "nameEn": "Huh?",
+      "aliases": [
+        "BEAR",
+        "Huh?",
+        "bear",
+        "啊？"
+      ],
+      "category": "default",
+      "keywords": [
+        "bear",
+        "huh?",
+        "啊？"
+      ]
+    },
+    {
+      "id": "bull",
+      "file": "lark/bull.png",
+      "nameZh": "公牛",
+      "nameEn": "Bull",
+      "aliases": [
+        "BULL",
+        "Bull",
+        "bull",
+        "公牛"
+      ],
+      "category": "default",
+      "keywords": [
+        "bull",
+        "公牛"
+      ]
+    },
+    {
+      "id": "calf",
+      "file": "lark/calf.png",
+      "nameZh": "小牛",
+      "nameEn": "Calf",
+      "aliases": [
+        "CALF",
+        "Calf",
+        "calf",
+        "小牛"
+      ],
+      "category": "default",
+      "keywords": [
+        "calf",
+        "小牛"
+      ]
+    },
+    {
+      "id": "roarforyou",
+      "file": "lark/roarforyou.png",
+      "nameZh": "萌虎打Call",
+      "nameEn": "RoarForYou",
+      "aliases": [
+        "RoarForYou",
+        "roarforyou",
+        "萌虎打Call"
+      ],
+      "category": "default",
+      "keywords": [
+        "roarforyou",
+        "萌虎打call"
+      ]
+    },
+    {
+      "id": "jubilantrabbit_v1",
+      "file": "lark/jubilantrabbit_v1.png",
+      "nameZh": "欢兔喝彩",
+      "nameEn": "JubilantRabbit",
+      "aliases": [
+        "JubilantRabbit",
+        "jubilantrabbit_v1",
+        "欢兔喝彩"
+      ],
+      "category": "default",
+      "keywords": [
+        "jubilantrabbit",
+        "jubilantrabbit_v1",
+        "欢兔喝彩"
+      ]
+    },
+    {
+      "id": "happydragon_v3",
+      "file": "lark/happydragon_v3.png",
+      "nameZh": "龙光焕发",
+      "nameEn": "HappyLoong",
+      "aliases": [
+        "HappyDragon",
+        "HappyLoong",
+        "happydragon_v3",
+        "龙光焕发"
+      ],
+      "category": "default",
+      "keywords": [
+        "happydragon",
+        "happydragon_v3",
+        "happyloong",
+        "龙光焕发"
+      ]
+    },
+    {
+      "id": "sisiasyouwish_v1",
+      "file": "lark/sisiasyouwish_v1.png",
+      "nameZh": "巳巳如意",
+      "nameEn": "KeepYourSpiritsAwake",
+      "aliases": [
+        "KeepYourSpiritsAwake",
+        "SiSiASYouWish",
+        "sisiasyouwish_v1",
+        "巳巳如意"
+      ],
+      "category": "default",
+      "keywords": [
+        "keepyourspiritsawake",
+        "sisiasyouwish",
+        "sisiasyouwish_v1",
+        "巳巳如意"
+      ]
+    },
+    {
+      "id": "lips_v1",
+      "file": "lark/lips_v1.png",
+      "nameZh": "嘴唇",
+      "nameEn": "Lips",
+      "aliases": [
+        "LIPS",
+        "Lips",
+        "lips_v1",
+        "嘴唇"
+      ],
+      "category": "default",
+      "keywords": [
+        "lips",
+        "lips_v1",
+        "嘴唇"
+      ]
+    },
+    {
+      "id": "beer",
+      "file": "lark/beer.png",
+      "nameZh": "啤酒",
+      "nameEn": "Beer",
+      "aliases": [
+        "BEER",
+        "Beer",
+        "beer",
+        "啤酒"
+      ],
+      "category": "default",
+      "keywords": [
+        "beer",
+        "啤酒"
+      ]
+    },
+    {
+      "id": "cake_v2",
+      "file": "lark/cake_v2.png",
+      "nameZh": "蛋糕",
+      "nameEn": "Cake",
+      "aliases": [
+        "CAKE",
+        "Cake",
+        "cake_v2",
+        "蛋糕"
+      ],
+      "category": "default",
+      "keywords": [
+        "cake",
+        "cake_v2",
+        "蛋糕"
+      ]
+    },
+    {
+      "id": "gift_v2",
+      "file": "lark/gift_v2.png",
+      "nameZh": "礼物",
+      "nameEn": "Gift",
+      "aliases": [
+        "GIFT",
+        "Gift",
+        "gift_v2",
+        "礼物"
+      ],
+      "category": "default",
+      "keywords": [
+        "gift",
+        "gift_v2",
+        "礼物"
+      ]
+    },
+    {
+      "id": "cucumber_v3",
+      "file": "lark/cucumber_v3.png",
+      "nameZh": "胡瓜",
+      "nameEn": "Cucumber",
+      "aliases": [
+        "CUCUMBER",
+        "Cucumber",
+        "cucumber_v3",
+        "胡瓜"
+      ],
+      "category": "default",
+      "keywords": [
+        "cucumber",
+        "cucumber_v3",
+        "胡瓜"
+      ]
+    },
+    {
+      "id": "drumstick",
+      "file": "lark/drumstick.png",
+      "nameZh": "鸡腿",
+      "nameEn": "ChickenLeg",
+      "aliases": [
+        "ChickenLeg",
+        "Drumstick",
+        "drumstick",
+        "鸡腿"
+      ],
+      "category": "default",
+      "keywords": [
+        "chickenleg",
+        "drumstick",
+        "鸡腿"
+      ]
+    },
+    {
+      "id": "pepper",
+      "file": "lark/pepper.png",
+      "nameZh": "辣椒",
+      "nameEn": "HotPepper",
+      "aliases": [
+        "HotPepper",
+        "Pepper",
+        "pepper",
+        "辣椒"
+      ],
+      "category": "default",
+      "keywords": [
+        "hotpepper",
+        "pepper",
+        "辣椒"
+      ]
+    },
+    {
+      "id": "candiedhaws",
+      "file": "lark/candiedhaws.png",
+      "nameZh": "冰糖葫芦",
+      "nameEn": "CandiedHaws",
+      "aliases": [
+        "CANDIEDHAWS",
+        "CandiedHaws",
+        "candiedhaws",
+        "冰糖葫芦"
+      ],
+      "category": "default",
+      "keywords": [
+        "candiedhaws",
+        "冰糖葫芦"
+      ]
+    },
+    {
+      "id": "bubbletea",
+      "file": "lark/bubbletea.png",
+      "nameZh": "奶茶",
+      "nameEn": "BubbleTea",
+      "aliases": [
+        "BubbleTea",
+        "bubbletea",
+        "奶茶"
+      ],
+      "category": "default",
+      "keywords": [
+        "bubbletea",
+        "奶茶"
+      ]
+    },
+    {
+      "id": "coffee_v2",
+      "file": "lark/coffee_v2.png",
+      "nameZh": "咖啡",
+      "nameEn": "Coffee",
+      "aliases": [
+        "Coffee",
+        "coffee_v2",
+        "咖啡"
+      ],
+      "category": "default",
+      "keywords": [
+        "coffee",
+        "coffee_v2",
+        "咖啡"
+      ]
+    },
+    {
+      "id": "yes_v2",
+      "file": "lark/yes_v2.png",
+      "nameZh": "Yes",
+      "nameEn": "Yes",
+      "aliases": [
+        "Yes",
+        "yes_v2"
+      ],
+      "category": "default",
+      "keywords": [
+        "yes",
+        "yes_v2"
+      ]
+    },
+    {
+      "id": "no_v3",
+      "file": "lark/no_v3.png",
+      "nameZh": "No",
+      "nameEn": "No",
+      "aliases": [
+        "No",
+        "no_v3"
+      ],
+      "category": "default",
+      "keywords": [
+        "no",
+        "no_v3"
+      ]
+    },
+    {
+      "id": "okr",
+      "file": "lark/okr.png",
+      "nameZh": "OKR",
+      "nameEn": "OKR",
+      "aliases": [
+        "OKR",
+        "okr"
+      ],
+      "category": "default",
+      "keywords": [
+        "okr"
+      ]
+    },
+    {
+      "id": "checkmark",
+      "file": "lark/checkmark.png",
+      "nameZh": "勾号",
+      "nameEn": "CheckMark",
+      "aliases": [
+        "CheckMark",
+        "checkmark",
+        "勾号"
+      ],
+      "category": "default",
+      "keywords": [
+        "checkmark",
+        "勾号"
+      ]
+    },
+    {
+      "id": "crossmark",
+      "file": "lark/crossmark.png",
+      "nameZh": "叉号",
+      "nameEn": "CrossMark",
+      "aliases": [
+        "CrossMark",
+        "crossmark",
+        "叉号"
+      ],
+      "category": "default",
+      "keywords": [
+        "crossmark",
+        "叉号"
+      ]
+    },
+    {
+      "id": "minusone_v3",
+      "file": "lark/minusone_v3.png",
+      "nameZh": "-1",
+      "nameEn": "-1",
+      "aliases": [
+        "-1",
+        "MinusOne",
+        "minusone_v3"
+      ],
+      "category": "default",
+      "keywords": [
+        "-1",
+        "minusone",
+        "minusone_v3"
+      ]
+    },
+    {
+      "id": "hundred",
+      "file": "lark/hundred.png",
+      "nameZh": "100分",
+      "nameEn": "100",
+      "aliases": [
+        "100",
+        "100分",
+        "Hundred",
+        "hundred"
+      ],
+      "category": "default",
+      "keywords": [
+        "100",
+        "100分",
+        "hundred"
+      ]
+    },
+    {
+      "id": "awesomen_v2",
+      "file": "lark/awesomen_v2.png",
+      "nameZh": "牛",
+      "nameEn": "Awesome!",
+      "aliases": [
+        "AWESOMEN",
+        "Awesome!",
+        "awesomen_v2",
+        "牛"
+      ],
+      "category": "default",
+      "keywords": [
+        "awesome!",
+        "awesomen",
+        "awesomen_v2",
+        "牛"
+      ]
+    },
+    {
+      "id": "pin",
+      "file": "lark/pin.png",
+      "nameZh": "图钉",
+      "nameEn": "Pin",
+      "aliases": [
+        "Pin",
+        "pin",
+        "图钉"
+      ],
+      "category": "default",
+      "keywords": [
+        "pin",
+        "图钉"
+      ]
+    },
+    {
+      "id": "alarm",
+      "file": "lark/alarm.png",
+      "nameZh": "闹钟",
+      "nameEn": "AlarmClock",
+      "aliases": [
+        "Alarm",
+        "AlarmClock",
+        "alarm",
+        "闹钟"
+      ],
+      "category": "default",
+      "keywords": [
+        "alarm",
+        "alarmclock",
+        "闹钟"
+      ]
+    },
+    {
+      "id": "loudspeaker",
+      "file": "lark/loudspeaker.png",
+      "nameZh": "喇叭",
+      "nameEn": "Loudspeaker",
+      "aliases": [
+        "Loudspeaker",
+        "loudspeaker",
+        "喇叭"
+      ],
+      "category": "default",
+      "keywords": [
+        "loudspeaker",
+        "喇叭"
+      ]
+    },
+    {
+      "id": "trophy",
+      "file": "lark/trophy.png",
+      "nameZh": "奖杯",
+      "nameEn": "Trophy",
+      "aliases": [
+        "Trophy",
+        "trophy",
+        "奖杯"
+      ],
+      "category": "default",
+      "keywords": [
+        "trophy",
+        "奖杯"
+      ]
+    },
+    {
+      "id": "fire",
+      "file": "lark/fire.png",
+      "nameZh": "火",
+      "nameEn": "Fire",
+      "aliases": [
+        "Fire",
+        "fire",
+        "火"
+      ],
+      "category": "default",
+      "keywords": [
+        "fire",
+        "火"
+      ]
+    },
+    {
+      "id": "rainbowpuke_v2",
+      "file": "lark/rainbowpuke_v2.png",
+      "nameZh": "彩虹",
+      "nameEn": "Rainbow",
+      "aliases": [
+        "RAINBOWPUKE",
+        "Rainbow",
+        "rainbowpuke_v2",
+        "彩虹"
+      ],
+      "category": "default",
+      "keywords": [
+        "rainbow",
+        "rainbowpuke",
+        "rainbowpuke_v2",
+        "彩虹"
+      ]
+    },
+    {
+      "id": "music_v2",
+      "file": "lark/music_v2.png",
+      "nameZh": "音乐",
+      "nameEn": "Music",
+      "aliases": [
+        "Music",
+        "music_v2",
+        "音乐"
+      ],
+      "category": "default",
+      "keywords": [
+        "music",
+        "music_v2",
+        "音乐"
+      ]
+    },
+    {
+      "id": "tv_v1",
+      "file": "lark/tv_v1.png",
+      "nameZh": "电视",
+      "nameEn": "TV",
+      "aliases": [
+        "TV",
+        "tv_v1",
+        "电视"
+      ],
+      "category": "default",
+      "keywords": [
+        "tv",
+        "tv_v1",
+        "电视"
+      ]
+    },
+    {
+      "id": "movie_v1",
+      "file": "lark/movie_v1.png",
+      "nameZh": "电影",
+      "nameEn": "Movie",
+      "aliases": [
+        "Movie",
+        "movie_v1",
+        "电影"
+      ],
+      "category": "default",
+      "keywords": [
+        "movie",
+        "movie_v1",
+        "电影"
+      ]
+    },
+    {
+      "id": "pumpkin_v1",
+      "file": "lark/pumpkin_v1.png",
+      "nameZh": "南瓜灯",
+      "nameEn": "JackOLantern",
+      "aliases": [
+        "JackOLantern",
+        "Pumpkin",
+        "pumpkin_v1",
+        "南瓜灯"
+      ],
+      "category": "default",
+      "keywords": [
+        "jackolantern",
+        "pumpkin",
+        "pumpkin_v1",
+        "南瓜灯"
+      ]
+    },
+    {
+      "id": "xmastree",
+      "file": "lark/xmastree.png",
+      "nameZh": "圣诞树",
+      "nameEn": "ChristmasTree",
+      "aliases": [
+        "ChristmasTree",
+        "XmasTree",
+        "xmastree",
+        "圣诞树"
+      ],
+      "category": "default",
+      "keywords": [
+        "christmastree",
+        "xmastree",
+        "圣诞树"
+      ]
+    },
+    {
+      "id": "snowman",
+      "file": "lark/snowman.png",
+      "nameZh": "雪人",
+      "nameEn": "Snowman",
+      "aliases": [
+        "Snowman",
+        "snowman",
+        "雪人"
+      ],
+      "category": "default",
+      "keywords": [
+        "snowman",
+        "雪人"
+      ]
+    },
+    {
+      "id": "xmashat",
+      "file": "lark/xmashat.png",
+      "nameZh": "圣诞帽",
+      "nameEn": "SantaHat",
+      "aliases": [
+        "SantaHat",
+        "XmasHat",
+        "xmashat",
+        "圣诞帽"
+      ],
+      "category": "default",
+      "keywords": [
+        "santahat",
+        "xmashat",
+        "圣诞帽"
+      ]
+    },
+    {
+      "id": "fireworks_v2",
+      "file": "lark/fireworks_v2.png",
+      "nameZh": "烟花",
+      "nameEn": "Fireworks",
+      "aliases": [
+        "FIREWORKS",
+        "Fireworks",
+        "fireworks_v2",
+        "烟花"
+      ],
+      "category": "default",
+      "keywords": [
+        "fireworks",
+        "fireworks_v2",
+        "烟花"
+      ]
+    },
+    {
+      "id": "2026_v1",
+      "file": "lark/2026_v1.png",
+      "nameZh": "2026",
+      "nameEn": "2026",
+      "aliases": [
+        "2026",
+        "2026_v1"
+      ],
+      "category": "default",
+      "keywords": [
+        "2026",
+        "2026_v1"
+      ]
+    },
+    {
+      "id": "beattheforefront_v1",
+      "file": "lark/beattheforefront_v1.png",
+      "nameZh": "一马当先",
+      "nameEn": "TakeTheLead",
+      "aliases": [
+        "BeAtTheForefront",
+        "TakeTheLead",
+        "beattheforefront_v1",
+        "一马当先"
+      ],
+      "category": "default",
+      "keywords": [
+        "beattheforefront",
+        "beattheforefront_v1",
+        "takethelead",
+        "一马当先"
+      ]
+    },
+    {
+      "id": "redpacket",
+      "file": "lark/redpacket.png",
+      "nameZh": "红包",
+      "nameEn": "RedPacket",
+      "aliases": [
+        "REDPACKET",
+        "RedPacket",
+        "redpacket",
+        "红包"
+      ],
+      "category": "default",
+      "keywords": [
+        "redpacket",
+        "红包"
+      ]
+    },
+    {
+      "id": "fortune",
+      "file": "lark/fortune.png",
+      "nameZh": "发",
+      "nameEn": "Fortune",
+      "aliases": [
+        "FORTUNE",
+        "Fortune",
+        "fortune",
+        "发"
+      ],
+      "category": "default",
+      "keywords": [
+        "fortune",
+        "发"
+      ]
+    },
+    {
+      "id": "luck",
+      "file": "lark/luck.png",
+      "nameZh": "福",
+      "nameEn": "Luck",
+      "aliases": [
+        "LUCK",
+        "Luck",
+        "luck",
+        "福"
+      ],
+      "category": "default",
+      "keywords": [
+        "luck",
+        "福"
+      ]
+    },
+    {
+      "id": "firecracker_v3",
+      "file": "lark/firecracker_v3.png",
+      "nameZh": "爆竹",
+      "nameEn": "Firecrackers",
+      "aliases": [
+        "FIRECRACKER",
+        "Firecrackers",
+        "firecracker_v3",
+        "爆竹"
+      ],
+      "category": "default",
+      "keywords": [
+        "firecracker",
+        "firecracker_v3",
+        "firecrackers",
+        "爆竹"
+      ]
+    },
+    {
+      "id": "stickyriceballs",
+      "file": "lark/stickyriceballs.png",
+      "nameZh": "元宵",
+      "nameEn": "StickyRiceBalls",
+      "aliases": [
+        "StickyRiceBalls",
+        "stickyriceballs",
+        "元宵"
+      ],
+      "category": "default",
+      "keywords": [
+        "stickyriceballs",
+        "元宵"
+      ]
+    },
+    {
+      "id": "mooncake_v2",
+      "file": "lark/mooncake_v2.png",
+      "nameZh": "月饼",
+      "nameEn": "Mooncake",
+      "aliases": [
+        "Mooncake",
+        "mooncake_v2",
+        "月饼"
+      ],
+      "category": "default",
+      "keywords": [
+        "mooncake",
+        "mooncake_v2",
+        "月饼"
+      ]
+    },
+    {
+      "id": "moonrabbit_v2",
+      "file": "lark/moonrabbit_v2.png",
+      "nameZh": "玉兔",
+      "nameEn": "MoonRabbit",
+      "aliases": [
+        "MoonRabbit",
+        "moonrabbit_v2",
+        "玉兔"
+      ],
+      "category": "default",
+      "keywords": [
+        "moonrabbit",
+        "moonrabbit_v2",
+        "玉兔"
+      ]
+    },
+    {
+      "id": "heartbroken",
+      "file": "lark/heartbroken.png",
+      "nameZh": "心碎",
+      "nameEn": "BrokenHeart",
+      "aliases": [
+        "BrokenHeart",
+        "HEARTBROKEN",
+        "heartbroken",
+        "心碎"
+      ],
+      "category": "default",
+      "keywords": [
+        "brokenheart",
+        "heartbroken",
+        "心碎"
+      ]
+    },
+    {
+      "id": "bomb",
+      "file": "lark/bomb.png",
+      "nameZh": "炸弹",
+      "nameEn": "Bomb",
+      "aliases": [
+        "BOMB",
+        "Bomb",
+        "bomb",
+        "炸弹"
+      ],
+      "category": "default",
+      "keywords": [
+        "bomb",
+        "炸弹"
+      ]
+    },
+    {
+      "id": "poop",
+      "file": "lark/poop.png",
+      "nameZh": "便便",
+      "nameEn": "Poop",
+      "aliases": [
+        "POOP",
+        "Poop",
+        "poop",
+        "便便"
+      ],
+      "category": "default",
+      "keywords": [
+        "poop",
+        "便便"
+      ]
+    },
+    {
+      "id": "eighteen",
+      "file": "lark/eighteen.png",
+      "nameZh": "18禁",
+      "nameEn": "NoOneUnder18",
+      "aliases": [
+        "18X",
+        "18禁",
+        "NoOneUnder18",
+        "eighteen"
+      ],
+      "category": "default",
+      "keywords": [
+        "18x",
+        "18禁",
+        "eighteen",
+        "nooneunder18"
+      ]
+    },
+    {
+      "id": "cleaver_v3",
+      "file": "lark/cleaver_v3.png",
+      "nameZh": "刀",
+      "nameEn": "Knife",
+      "aliases": [
+        "CLEAVER",
+        "Knife",
+        "cleaver_v3",
+        "刀"
+      ],
+      "category": "default",
+      "keywords": [
+        "cleaver",
+        "cleaver_v3",
+        "knife",
+        "刀"
+      ]
+    },
+    {
+      "id": "basketball",
+      "file": "lark/basketball.png",
+      "nameZh": "篮球",
+      "nameEn": "Basketball",
+      "aliases": [
+        "Basketball",
+        "basketball",
+        "篮球"
+      ],
+      "category": "default",
+      "keywords": [
+        "basketball",
+        "篮球"
+      ]
+    },
+    {
+      "id": "soccer",
+      "file": "lark/soccer.png",
+      "nameZh": "足球",
+      "nameEn": "Soccer",
+      "aliases": [
+        "Soccer",
+        "soccer",
+        "足球"
+      ],
+      "category": "default",
+      "keywords": [
+        "soccer",
+        "足球"
+      ]
+    },
+    {
+      "id": "generaldonotdisturb_v3",
+      "file": "lark/generaldonotdisturb_v3.png",
+      "nameZh": "请勿打扰",
+      "nameEn": "DoNotDisturb",
+      "aliases": [
+        "DoNotDisturb",
+        "GeneralDoNotDisturb",
+        "generaldonotdisturb_v3",
+        "请勿打扰"
+      ],
+      "category": "default",
+      "keywords": [
+        "donotdisturb",
+        "generaldonotdisturb",
+        "generaldonotdisturb_v3",
+        "请勿打扰"
+      ]
+    },
+    {
+      "id": "darkyouarethebest_v1",
+      "file": "lark/darkyouarethebest_v1.png",
+      "nameZh": "送你小红花",
+      "nameEn": "YouAreTheBest",
+      "aliases": [
+        "DarkYouAreTheBest",
+        "YouAreTheBest",
+        "darkyouarethebest_v1",
+        "送你小红花"
+      ],
+      "category": "default",
+      "keywords": [
+        "darkyouarethebest",
+        "darkyouarethebest_v1",
+        "youarethebest",
+        "送你小红花"
+      ]
+    },
+    {
+      "id": "lightyouarethebest_v1",
+      "file": "lark/lightyouarethebest_v1.png",
+      "nameZh": "送你小红花",
+      "nameEn": "YouAreTheBest",
+      "aliases": [
+        "LightYouAreTheBest",
+        "YouAreTheBest",
+        "lightyouarethebest_v1",
+        "送你小红花"
+      ],
+      "category": "default",
+      "keywords": [
+        "lightyouarethebest",
+        "lightyouarethebest_v1",
+        "youarethebest",
+        "送你小红花"
+      ]
+    },
+    {
+      "id": "mediumdarkyouarethebest_v1",
+      "file": "lark/mediumdarkyouarethebest_v1.png",
+      "nameZh": "送你小红花",
+      "nameEn": "YouAreTheBest",
+      "aliases": [
+        "MediumdarkYouAreTheBest",
+        "YouAreTheBest",
+        "mediumdarkyouarethebest_v1",
+        "送你小红花"
+      ],
+      "category": "default",
+      "keywords": [
+        "mediumdarkyouarethebest",
+        "mediumdarkyouarethebest_v1",
+        "youarethebest",
+        "送你小红花"
+      ]
+    },
+    {
+      "id": "mediumlightyouarethebest_v1",
+      "file": "lark/mediumlightyouarethebest_v1.png",
+      "nameZh": "送你小红花",
+      "nameEn": "YouAreTheBest",
+      "aliases": [
+        "MediumlightYouAreTheBest",
+        "YouAreTheBest",
+        "mediumlightyouarethebest_v1",
+        "送你小红花"
+      ],
+      "category": "default",
+      "keywords": [
+        "mediumlightyouarethebest",
+        "mediumlightyouarethebest_v1",
+        "youarethebest",
+        "送你小红花"
+      ]
+    },
+    {
+      "id": "mediumyouarethebest_v1",
+      "file": "lark/mediumyouarethebest_v1.png",
+      "nameZh": "送你小红花",
+      "nameEn": "YouAreTheBest",
+      "aliases": [
+        "MediumYouAreTheBest",
+        "YouAreTheBest",
+        "mediumyouarethebest_v1",
+        "送你小红花"
+      ],
+      "category": "default",
+      "keywords": [
+        "mediumyouarethebest",
+        "mediumyouarethebest_v1",
+        "youarethebest",
+        "送你小红花"
+      ]
+    }
   ]
 }

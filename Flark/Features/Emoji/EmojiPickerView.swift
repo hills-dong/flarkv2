@@ -14,9 +14,8 @@ struct EmojiPickerView: View {
     private func label(_ cat: String) -> LocalizedStringKey {
         switch cat {
         case "most_used": return "最常使用"
-        case "default": return "默认表情"
-        case "lark": return "Lark 贴纸"
-        default: return LocalizedStringKey(cat)
+        case "default":   return "默认表情"
+        default:          return LocalizedStringKey(cat)
         }
     }
 
@@ -24,13 +23,17 @@ struct EmojiPickerView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    ForEach(model.emoji.categories, id: \.self) { cat in
+                    let sections: [(String, [EmojiItem])] = [
+                        ("most_used", model.emoji.mostUsed),
+                        ("default", model.emoji.category("default")),
+                    ].filter { !$1.isEmpty }
+                    ForEach(sections, id: \.0) { cat, sectionItems in
                         VStack(alignment: .leading, spacing: 10) {
                             Text(label(cat))
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.secondary)
                             LazyVGrid(columns: columns, spacing: 10) {
-                                ForEach(model.emoji.category(cat)) { item in
+                                ForEach(sectionItems) { item in
                                     Button {
                                         onPick(item); dismiss()
                                     } label: {

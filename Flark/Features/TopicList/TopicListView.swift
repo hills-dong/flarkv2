@@ -7,6 +7,12 @@ struct TopicListView: View {
     @State private var composing = false
     @State private var showSpaces = false
     @State private var showIdentity = false
+    @State private var editingTopic: EditingTopic? = nil
+
+    private struct EditingTopic: Identifiable {
+        let id: String
+        let body: ContentDocument
+    }
 
     var body: some View {
         let topics = model.projection.topicRowsByRecency
@@ -25,6 +31,11 @@ struct TopicListView: View {
                                 .listRowBackground(Color.clear)
                                 .reactionPanel(
                                     targetID: topic.id, targetType: .topic,
+                                    onEdit: model.canEditTopic(topic.id) ? {
+                                        if let t = model.projection.topics[topic.id] {
+                                            editingTopic = EditingTopic(id: topic.id, body: t.body)
+                                        }
+                                    } : nil,
                                     onDelete: model.canDeleteTopic(topic.id) ? {
                                         if selection == topic.id { selection = nil }
                                         model.deleteTopic(topic.id)
@@ -75,9 +86,12 @@ struct TopicListView: View {
                 Button { showIdentity = true } label: { Image(systemName: "person.crop.circle") }
             }
         }
-        .sheet(isPresented: $composing) { ComposerView(mode: .topic) }
+        .sheet(isPresented: $composing) { ComposerView(mode: .newTopic) }
         .sheet(isPresented: $showSpaces) { SpaceListView() }
         .sheet(isPresented: $showIdentity) { IdentitySettingsView() }
+        .sheet(item: $editingTopic) { target in
+            ComposerView(mode: .editTopic(topicID: target.id, body: target.body))
+        }
     }
 
     private var emptyHint: String {
@@ -100,15 +114,13 @@ struct TopicCard: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.displayName(for: topic.authorID))
                         .font(.subheadline.weight(.semibold))
-                    Text(EventTime.label(Int64(topic.createdAt)))
+                    timestampLine
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
             }
-            if !topic.preview.isEmpty {
-                Text(renderedPreview)
-                    .font(.body)
-                    .lineLimit(4)
+            if !topic.previewSegments.isEmpty {
+                previewText
             }
             if !topic.images.isEmpty {
                 TopicImageRow(images: topic.images)
@@ -131,21 +143,33 @@ struct TopicCard: View {
         .contentShape(Rectangle())
     }
 
-    /// On macOS, swap `[u_xxx]` emoji-id placeholders left in
-    /// `topic.preview` for their Unicode glyph so the card reads naturally.
-    /// iOS behavior is unchanged.
-    private var renderedPreview: String {
-        #if os(macOS)
-        var out = topic.preview
-        // Bracketed IDs are the only place `[` appears in preview text.
-        while let range = out.range(of: #"\[u_[A-Za-z0-9_]+\]"#, options: .regularExpression) {
-            let id = String(out[range].dropFirst().dropLast())
-            let glyph = model.emoji.item(id)?.unicode ?? "🙂"
-            out.replaceSubrange(range, with: glyph)
+    /// "时间戳" + optional "· 已编辑" suffix as a single Text run.
+    private var timestampLine: Text {
+        let base = Text(EventTime.label(Int64(topic.createdAt)))
+        if topic.editedAt != nil {
+            return base + Text("  ·  已编辑")
         }
-        return out
+        return base
+    }
+
+    /// Same TextKit pipeline as topic detail / editor — emoji attachments
+    /// align to text identically. Truncated to 4 lines via the underlying
+    /// text container's `maximumNumberOfLines`.
+    @ViewBuilder
+    private var previewText: some View {
+        #if canImport(UIKit)
+        AttrInlineText(
+            attributed: attributedInlineText(from: topic.previewSegments, catalog: model.emoji),
+            maxLines: 4
+        )
         #else
-        return topic.preview
+        Text(topic.previewSegments.reduce(into: "") { acc, seg in
+            switch seg {
+            case .text(let s), .styledText(let s, _): acc += s
+            case .emoji(let id): acc += (model.emoji.item(id)?.placeholder ?? "[\(id)]")
+            case .image: break
+            }
+        }).font(.body).lineLimit(4)
         #endif
     }
 }

@@ -9,6 +9,8 @@ struct ReactionActionPanel: View {
     @Environment(\.dismiss) private var dismiss
     let targetID: String
     let targetType: TargetType
+    /// Non-nil only when the viewer may edit this item.
+    var onEdit: (() -> Void)?
     /// Non-nil only when the viewer may delete this item.
     var onDelete: (() -> Void)?
 
@@ -18,7 +20,9 @@ struct ReactionActionPanel: View {
     var body: some View {
         VStack(spacing: 16) {
             HStack(spacing: 10) {
-                ForEach(model.emoji.category("most_used")) { item in
+                // Top-5 frequency shortcuts; the "更多" button below opens
+                // the full picker for everything else.
+                ForEach(Array(model.emoji.mostUsed.prefix(5))) { item in
                     Button {
                         model.toggleReaction(targetID: targetID, type: targetType, emojiID: item.id)
                         dismiss()
@@ -40,21 +44,34 @@ struct ReactionActionPanel: View {
             }
             .frame(maxWidth: .infinity)
 
-            if onDelete != nil {
+            if onEdit != nil || onDelete != nil {
                 Divider()
+            }
+            if onEdit != nil {
+                Button {
+                    onEdit?()
+                    dismiss()
+                } label: {
+                    Label("编辑", systemImage: "pencil")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            if onDelete != nil {
                 Button(role: .destructive) {
                     confirmingDelete = true
                 } label: {
                     Label("删除", systemImage: "trash")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.red)
             }
         }
         .padding(20)
-        .presentationDetents([.height(onDelete == nil ? 132 : 210)])
+        .presentationDetents([.height(detentHeight)])
         .presentationDragIndicator(.visible)
         .sheet(isPresented: $showPicker) {
             EmojiPickerView(title: "添加表情") { item in
@@ -74,21 +91,32 @@ struct ReactionActionPanel: View {
                  : "删除后无法恢复。")
         }
     }
+
+    private var detentHeight: CGFloat {
+        // 132 = reaction row only; each action row adds ~58.
+        var h: CGFloat = 132
+        if onEdit != nil { h += 58 }
+        if onDelete != nil { h += 58 }
+        return h
+    }
 }
 
 extension View {
-    /// Long-press a topic or reply to open the reaction / delete panel.
-    /// Pass `onDelete` only when the viewer is permitted to delete.
+    /// Long-press a topic or reply to open the reaction / edit / delete panel.
+    /// Pass `onEdit` / `onDelete` only when the viewer is permitted.
     func reactionPanel(targetID: String, targetType: TargetType,
+                       onEdit: (() -> Void)? = nil,
                        onDelete: (() -> Void)? = nil) -> some View {
         modifier(ReactionPanelModifier(targetID: targetID,
-                                       targetType: targetType, onDelete: onDelete))
+                                       targetType: targetType,
+                                       onEdit: onEdit, onDelete: onDelete))
     }
 }
 
 private struct ReactionPanelModifier: ViewModifier {
     let targetID: String
     let targetType: TargetType
+    var onEdit: (() -> Void)?
     var onDelete: (() -> Void)?
     @State private var presented = false
 
@@ -102,7 +130,8 @@ private struct ReactionPanelModifier: ViewModifier {
             )
             .sheet(isPresented: $presented) {
                 ReactionActionPanel(targetID: targetID,
-                                    targetType: targetType, onDelete: onDelete)
+                                    targetType: targetType,
+                                    onEdit: onEdit, onDelete: onDelete)
             }
     }
 }

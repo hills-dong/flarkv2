@@ -10,7 +10,13 @@
 #   ASC_KEY_PATH       absolute path to the AuthKey_XXXXXXXXXX.p8 file
 # Optional:
 #   BUNDLE_ID          default: app.flark.bogota  (must be registered/ownable by your team)
-#   BUILD_NUMBER       default: unix timestamp
+#   BUILD_NUMBER       default: YYYYMMDDHHMM (UTC)
+#
+# Note on the default: earlier uploads used `date +%s` (10-digit unix
+# timestamp), but a separate upload used `date +%Y%m%d%H%M` (12-digit),
+# which compares larger numerically. TestFlight orders builds by build
+# number, so mixing the two makes "newer" uploads appear *below* older
+# ones in the build list. Stick to 12-digit YYYYMMDDHHMM going forward.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -19,7 +25,7 @@ cd "$(dirname "$0")/.."
 : "${ASC_ISSUER_ID:?set ASC_ISSUER_ID}"
 : "${ASC_KEY_PATH:?set ASC_KEY_PATH (path to .p8)}"
 BUNDLE_ID="${BUNDLE_ID:-app.flark.bogota}"
-BUILD_NUMBER="${BUILD_NUMBER:-$(date +%s)}"
+BUILD_NUMBER="${BUILD_NUMBER:-$(date -u +%Y%m%d%H%M)}"
 
 ARCHIVE="build/Flark.xcarchive"
 EXPORT_DIR="build/export"
