@@ -32,9 +32,11 @@ struct ReactionBar: View {
                 } label: {
                     HStack(spacing: 6) {
                         glyph(for: tally.emojiID)
-                        Text("\(tally.count)")
-                            .font(.body)
-                            .foregroundStyle(Color.secondary)
+                        if tally.count > 1 {
+                            Text("\(tally.count)")
+                                .font(.body)
+                                .foregroundStyle(Color.secondary)
+                        }
                     }
                     .padding(.horizontal, 6).padding(.vertical, 3)
                     .background(Color.secondary.opacity(0.12), in: Capsule())
