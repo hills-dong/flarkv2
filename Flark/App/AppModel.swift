@@ -26,6 +26,15 @@ final class AppModel {
         manifestURL: Bundle.main.url(forResource: "manifest", withExtension: "json", subdirectory: "Emoji")
             ?? Bundle.main.url(forResource: "manifest", withExtension: "json"))
 
+    /// Per-account local tally that drives the picker's `最常使用` row. Starts
+    /// empty and is rebuilt as the user reacts / inserts emoji. Rebound to a
+    /// new account on login/switch/import/logout.
+    private var emojiUsage = EmojiUsageStore(accountID: "")
+    /// Bumped on every `recordEmojiUsage` so SwiftUI views observing
+    /// `mostUsedEmoji` (Observable tracks reads of this property) re-render
+    /// without us needing to expose the store itself as observable state.
+    private var emojiUsageVersion: Int = 0
+
     private var identity: DeviceIdentity?
     private var clock: HLCClock?
     private var engine: SyncEngine?
@@ -96,7 +105,15 @@ final class AppModel {
         currentAccountID = id
         AccountStore.currentID = id
         spaces = SpaceStore.load(account: id)
+        rebindEmojiUsage(to: id)
         return true
+    }
+
+    /// The `最常使用` shortcut is per-account, so swap the store whenever the
+    /// active account changes — login, switch, import, logout.
+    private func rebindEmojiUsage(to accountID: String) {
+        emojiUsage = EmojiUsageStore(accountID: accountID)
+        emojiUsageVersion &+= 1
     }
 
     // MARK: - Identity / accounts
@@ -116,6 +133,7 @@ final class AppModel {
         accounts = AccountStore.accounts()
         currentSpace = nil
         projection = Projection()
+        rebindEmojiUsage(to: id)
         stage = .noSpace
     }
 
@@ -385,6 +403,30 @@ final class AppModel {
         emit(.reactionSet(targetID: targetID, targetType: type, emojiID: emojiID, removed: active))
     }
 
+    // MARK: - Emoji usage (drives `最常使用`)
+
+    /// Top emoji the user has actually reached for, frequency × recency-decay,
+    /// resolved into catalog items. The manifest's `defaultMostUsed` seeds pad
+    /// the tail so first-launch isn't empty; user picks always rank ahead and
+    /// push the seeds off as real usage accumulates.
+    var mostUsedEmoji: [EmojiItem] {
+        _ = emojiUsageVersion          // observe for SwiftUI invalidation
+        let dynamic = emojiUsage.topIDs(limit: 24)
+        var seen = Set(dynamic)
+        var merged = dynamic
+        for id in emoji.seedMostUsedIDs where !seen.contains(id) {
+            merged.append(id); seen.insert(id)
+        }
+        return merged.prefix(24).compactMap { emoji.item($0) }
+    }
+
+    /// Call from picker / quick-row / composer insertion — anywhere the user
+    /// explicitly chose an emoji. Toggling off a reaction shouldn't count.
+    func recordEmojiUsage(_ emojiID: String) {
+        emojiUsage.record(emojiID)
+        emojiUsageVersion &+= 1
+    }
+
     func uploadImage(_ data: Data) async -> (id: String, w: Int, h: Int)? {
         guard let repo else { return nil }
         #if canImport(UIKit)
@@ -508,6 +550,7 @@ final class AppModel {
         currentSpace = nil
         projection = Projection()
         accounts = AccountStore.accounts()
+        rebindEmojiUsage(to: "")
         stage = accounts.isEmpty ? .onboarding : .accountPicker
     }
 
@@ -558,6 +601,7 @@ final class AppModel {
         spaces = p.spaces
         SpaceStore.save(spaces, account: acctID)
         accounts = AccountStore.accounts()
+        rebindEmojiUsage(to: acctID)
 
         Task {
             await engine?.shutdown()

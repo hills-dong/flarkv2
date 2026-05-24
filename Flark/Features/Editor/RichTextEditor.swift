@@ -4,12 +4,14 @@ import FlarkKit
 import UIKit
 
 /// A UITextView-backed editor. The whole text stays editable; bold/italic are
-/// stored as font traits on attribute runs (not as committed segments), so
-/// toggling styles never freezes prior input.
+/// stored as font traits on attribute runs (not as committed runs), so
+/// toggling styles never freezes prior input. Bold and italic are independent —
+/// the same range can carry both at once and round-trips through markdown as
+/// `***bold-italic***`.
 struct RichTextEditor: UIViewRepresentable {
     @Binding var attributedText: NSAttributedString
     @Binding var selection: NSRange
-    @Binding var typingStyle: ContentDocument.TextStyle?
+    @Binding var typingStyle: Style
     @FocusState.Binding var focused: Bool
     /// When true, the editor takes first responder as soon as the view is
     /// inserted into a window. We can't rely on toggling `focused` from the
@@ -114,7 +116,7 @@ struct RichTextEditor: UIViewRepresentable {
             // mixed selection reads as "no style", not a misleading hit).
             guard let attr = tv.attributedText, attr.length > 0 else { return }
             let sel = tv.selectedRange
-            let newStyle: ContentDocument.TextStyle?
+            let newStyle: Style
             if sel.length == 0 {
                 let probe = sel.location > 0 ? sel.location - 1 : sel.location
                 guard probe < attr.length else { return }
@@ -123,7 +125,7 @@ struct RichTextEditor: UIViewRepresentable {
                 let range = NSRange(location: sel.location,
                                     length: min(sel.length, attr.length - sel.location))
                 guard range.length > 0 else { return }
-                var common: ContentDocument.TextStyle? = nil
+                var common: Style = []
                 var first = true
                 var consistent = true
                 attr.enumerateAttribute(.font, in: range, options: []) { value, _, stop in
@@ -131,7 +133,7 @@ struct RichTextEditor: UIViewRepresentable {
                     if first { common = s; first = false }
                     else if s != common { consistent = false; stop.pointee = true }
                 }
-                newStyle = consistent ? common : nil
+                newStyle = consistent ? common : []
             }
             if parent.typingStyle != newStyle { parent.typingStyle = newStyle }
         }
@@ -160,39 +162,37 @@ private final class AutoFocusTextView: UITextView {
 }
 
 enum RichTextAttributes {
-    static func typing(for style: ContentDocument.TextStyle?) -> [NSAttributedString.Key: Any] {
+    static func typing(for style: Style) -> [NSAttributedString.Key: Any] {
         let base = UIFont.preferredFont(forTextStyle: .body)
+        var traits: UIFontDescriptor.SymbolicTraits = []
+        if style.contains(.bold) { traits.insert(.traitBold) }
+        if style.contains(.italic) { traits.insert(.traitItalic) }
         let font: UIFont
-        switch style {
-        case .bold:
-            let d = base.fontDescriptor.withSymbolicTraits(.traitBold) ?? base.fontDescriptor
+        if traits.isEmpty {
+            font = base
+        } else if let d = base.fontDescriptor.withSymbolicTraits(traits) {
             font = UIFont(descriptor: d, size: 0)
-        case .italic:
-            let d = base.fontDescriptor.withSymbolicTraits(.traitItalic) ?? base.fontDescriptor
-            font = UIFont(descriptor: d, size: 0)
-        case nil:
+        } else {
             font = base
         }
         return [.font: font, .foregroundColor: UIColor.label]
     }
 
-    static func style(from font: UIFont?) -> ContentDocument.TextStyle? {
-        guard let font else { return nil }
+    static func style(from font: UIFont?) -> Style {
+        guard let font else { return [] }
+        var s: Style = []
         let traits = font.fontDescriptor.symbolicTraits
-        if traits.contains(.traitBold) { return .bold }
-        if traits.contains(.traitItalic) { return .italic }
-        return nil
+        if traits.contains(.traitBold) { s.insert(.bold) }
+        if traits.contains(.traitItalic) { s.insert(.italic) }
+        return s
     }
 
-    /// Toggles a trait on a range. If every run in the range already has the
-    /// trait, removes it; otherwise applies it uniformly. Bold and italic are
-    /// mutually exclusive (the underlying `ContentDocument.TextStyle` can only
-    /// hold one), so applying one clears the other to keep the live editor
-    /// state and the saved segments in sync.
-    static func toggle(_ style: ContentDocument.TextStyle, on attr: NSAttributedString, range: NSRange) -> NSAttributedString {
+    /// Toggle a single style bit (`.bold` or `.italic`) on the range. Bold
+    /// and italic are independent — combining the two yields the bold-italic
+    /// font trait pair which serializes as `***…***` in markdown.
+    static func toggle(_ bit: Style, on attr: NSAttributedString, range: NSRange) -> NSAttributedString {
         guard range.length > 0, range.location + range.length <= attr.length else { return attr }
-        let trait: UIFontDescriptor.SymbolicTraits = (style == .bold ? .traitBold : .traitItalic)
-        let other: UIFontDescriptor.SymbolicTraits = (style == .bold ? .traitItalic : .traitBold)
+        let trait: UIFontDescriptor.SymbolicTraits = bit.contains(.bold) ? .traitBold : .traitItalic
         let m = NSMutableAttributedString(attributedString: attr)
         var allHave = true
         m.enumerateAttribute(.font, in: range, options: []) { value, _, stop in
@@ -204,12 +204,8 @@ enum RichTextAttributes {
         m.enumerateAttribute(.font, in: range, options: []) { value, sub, _ in
             let f = (value as? UIFont) ?? UIFont.preferredFont(forTextStyle: .body)
             var traits = f.fontDescriptor.symbolicTraits
-            if allHave {
-                traits.remove(trait)
-            } else {
-                traits.insert(trait)
-                traits.remove(other)
-            }
+            if allHave { traits.remove(trait) }
+            else { traits.insert(trait) }
             let d = f.fontDescriptor.withSymbolicTraits(traits) ?? f.fontDescriptor
             m.addAttribute(.font, value: UIFont(descriptor: d, size: 0), range: sub)
         }
@@ -218,34 +214,39 @@ enum RichTextAttributes {
 }
 
 /// Custom attribute that pins an emoji `id` to a text attachment so we can
-/// round-trip the editor's NSAttributedString ↔ ContentDocument segments.
+/// round-trip the editor's NSAttributedString ↔ markdown.
 let emojiIDAttributeName = NSAttributedString.Key("emojiID")
 
 /// Builds an attributed-string fragment containing one inline Lark sticker —
 /// a single `NSTextAttachment` carrying the emoji image, sized to the
 /// caller's font line height (so it scales with body / footnote / etc.) and
 /// tagged with the catalog id.
+// Inline Lark emoji are drawn 1.44x the font's line height — same-size
+// glyphs read as too small next to body text; this bump matches the
+// "emoji slightly larger than text" feel of mainstream chat apps.
+private let inlineEmojiScale: CGFloat = 1.44
+
 func emojiAttachmentString(item: EmojiItem,
                            font: UIFont = .preferredFont(forTextStyle: .body)) -> NSAttributedString {
     let attachment = NSTextAttachment()
-    let lineHeight = font.lineHeight
-    // Horizontal padding baked into the canvas so the attachment width is
-    // `lineHeight + 2 × hPadding` and adjacent characters / emoji don't
-    // crowd the sticker. Matches the inline-render value in SharedViews.
+    let size = font.lineHeight * inlineEmojiScale
+    // Horizontal padding baked into the canvas so adjacent characters /
+    // emoji don't crowd the sticker. Matches the inline-render value in
+    // SharedViews. Not scaled with the emoji — it's a text-side gap.
     let hPadding: CGFloat = 2
     if let url = Bundle.main.url(forResource: item.file, withExtension: nil, subdirectory: "Emoji"),
        let data = try? Data(contentsOf: url),
        let img = UIImage(data: data) {
-        let canvas = CGSize(width: lineHeight + hPadding * 2, height: lineHeight)
+        let canvas = CGSize(width: size + hPadding * 2, height: size)
         let format = UIGraphicsImageRendererFormat.default()
         let resized = UIGraphicsImageRenderer(size: canvas, format: format).image { _ in
-            img.draw(in: CGRect(x: hPadding, y: 0, width: lineHeight, height: lineHeight))
+            img.draw(in: CGRect(x: hPadding, y: 0, width: size, height: size))
         }
         attachment.image = resized
         // Drop the image so it sits on the text's optical centre rather than
         // floating above the baseline. ~20% below baseline matches the inline
         // ContentDocumentView render.
-        attachment.bounds = CGRect(x: 0, y: -lineHeight * 0.2,
+        attachment.bounds = CGRect(x: 0, y: -size * 0.2,
                                    width: canvas.width, height: canvas.height)
     }
     let m = NSMutableAttributedString(attributedString:
@@ -255,12 +256,11 @@ func emojiAttachmentString(item: EmojiItem,
     return m
 }
 
-/// Image-attachment markers. `imageBlobAttributeName` tags the attachment
-/// glyph with the blob id; `imageW/H` carry the original pixel dimensions so
-/// `segmentsFromAttributed` can round-trip back to `.image(blobID:w:h:)`.
+/// Image-attachment marker. Tags the attachment glyph with the blob id so
+/// `markdownFromAttributed` can round-trip back to `![](blob://<id>)`.
+/// Dimensions live only on the in-memory attachment (decoded from blob data
+/// at load time) — the persisted markdown has no dims.
 let imageBlobAttributeName = NSAttributedString.Key("imageBlob")
-let imageWidthAttributeName = NSAttributedString.Key("imageW")
-let imageHeightAttributeName = NSAttributedString.Key("imageH")
 
 /// NSTextAttachment that sizes itself to the editor's full text-container
 /// width and renders the image with rounded corners + aspect-fill cropping —
@@ -333,16 +333,16 @@ final class InlineImageAttachment: NSTextAttachment {
 }
 
 /// Builds an attributed-string fragment containing just one inline image
-/// attachment, carrying the blob/dimension markers needed for round-tripping.
-/// Callers (e.g. `ComposerView.insertImage`) are responsible for any
-/// surrounding newlines so the attachment lands on its own line. `data` may
-/// be nil (e.g. blob still downloading) — the attachment renders an empty
-/// box of the right size and lets the user keep editing; the underlying
-/// segment is still preserved.
-/// Vertical breathing room above and below an inline image. Matches the
-/// 8pt `VStack` spacing `ContentDocumentView` uses between text and
-/// `BlobImage` in the read view, so the composer's image gutter looks
-/// identical to the rendered card.
+/// attachment, carrying the blob marker needed for round-tripping. Callers
+/// (e.g. `ComposerView.insertImage`) are responsible for any surrounding
+/// newlines so the attachment lands on its own line. `data` may be nil
+/// (e.g. blob still downloading) — the attachment renders an empty box of
+/// the right size and lets the user keep editing; the underlying segment is
+/// still preserved.
+///
+/// `w` and `h` are intrinsic pixel dimensions used by the attachment for
+/// layout only — they don't persist into the saved markdown (the renderer
+/// decodes them from blob bytes on next open).
 let inlineImageParagraphSpacing: CGFloat = 8
 
 func imageAttachmentString(blobID: String, w: Int, h: Int, data: Data?) -> NSAttributedString {
@@ -351,8 +351,6 @@ func imageAttachmentString(blobID: String, w: Int, h: Int, data: Data?) -> NSAtt
     let m = NSMutableAttributedString(attributedString: NSAttributedString(attachment: attachment))
     let r = NSRange(location: 0, length: m.length)
     m.addAttribute(imageBlobAttributeName, value: blobID, range: r)
-    m.addAttribute(imageWidthAttributeName, value: w, range: r)
-    m.addAttribute(imageHeightAttributeName, value: h, range: r)
     // The image is its own paragraph; let TextKit's paragraph-spacing
     // machinery (rather than empty body-font lines around it) own the
     // vertical gutters. Symmetric above & below by construction.
@@ -363,56 +361,78 @@ func imageAttachmentString(blobID: String, w: Int, h: Int, data: Data?) -> NSAtt
     return m
 }
 
-/// Walks attribute runs and produces ContentDocument segments. Plain text
-/// runs merge by style; runs carrying the `emojiID` or image-blob markers
-/// emit `.emoji(id:)` / `.image(...)` segments inline.
-func segmentsFromAttributed(_ s: NSAttributedString) -> [ContentDocument.Segment] {
-    guard s.length > 0 else { return [] }
-    var segments: [ContentDocument.Segment] = []
-    var textBuf = ""
-    var textStyle: ContentDocument.TextStyle? = nil
+/// Serialize the live editor's NSAttributedString into a markdown body that
+/// `MarkdownCodec.parse` can read back. Walks attribute runs, hoists out
+/// image / emoji attachments by their marker attributes, and collects
+/// contiguous `.link` ranges into single link runs (any internal styling on
+/// a link's display text is flattened, since `Run.link` carries a plain
+/// string).
+func markdownFromAttributed(_ s: NSAttributedString) -> String {
+    guard s.length > 0 else { return "" }
+    var runs: [Run] = []
 
-    func flushText() {
-        guard !textBuf.isEmpty else { return }
-        if let st = textStyle { segments.append(.styledText(text: textBuf, style: st)) }
-        else { segments.append(.text(textBuf)) }
-        textBuf = ""
+    // First pass: collect link ranges in document order. enumerateAttribute
+    // returns non-overlapping ranges already.
+    var linkRanges: [(NSRange, URL)] = []
+    s.enumerateAttribute(.link, in: NSRange(location: 0, length: s.length),
+                         options: []) { value, range, _ in
+        if let url = value as? URL { linkRanges.append((range, url)) }
     }
 
-    let full = NSRange(location: 0, length: s.length)
-    s.enumerateAttributes(in: full, options: []) { attrs, range, _ in
-        if let blob = attrs[imageBlobAttributeName] as? String,
-           let w = attrs[imageWidthAttributeName] as? Int,
-           let h = attrs[imageHeightAttributeName] as? Int {
-            flushText()
-            segments.append(.image(blobID: blob, width: w, height: h))
-            return
+    func emitNonLink(_ range: NSRange) {
+        guard range.length > 0 else { return }
+        var buf = ""
+        var bufStyle: Style = []
+
+        func flushBuf() {
+            guard !buf.isEmpty else { return }
+            if bufStyle.isEmpty { runs.append(.text(buf)) }
+            else { runs.append(.styled(buf, bufStyle)) }
+            buf = ""
         }
-        if let id = attrs[emojiIDAttributeName] as? String {
-            flushText()
-            segments.append(.emoji(id: id))
-            return
+
+        s.enumerateAttributes(in: range, options: []) { attrs, sub, _ in
+            if let blob = attrs[imageBlobAttributeName] as? String {
+                flushBuf()
+                runs.append(.image(blobID: blob))
+                return
+            }
+            if let id = attrs[emojiIDAttributeName] as? String {
+                flushBuf()
+                runs.append(.emoji(id: id))
+                return
+            }
+            let style = RichTextAttributes.style(from: attrs[.font] as? UIFont)
+            let text = (s.string as NSString).substring(with: sub)
+            if bufStyle != style { flushBuf(); bufStyle = style }
+            buf += text
         }
-        let sub = (s.string as NSString).substring(with: range)
-        let style = RichTextAttributes.style(from: attrs[.font] as? UIFont)
-        if !textBuf.isEmpty && textStyle != style { flushText() }
-        textBuf += sub
-        textStyle = style
+        flushBuf()
     }
-    flushText()
-    return segments
+
+    var cursor = 0
+    for (range, url) in linkRanges {
+        emitNonLink(NSRange(location: cursor, length: range.location - cursor))
+        let text = (s.string as NSString).substring(with: range)
+        runs.append(.link(text: text, url: url.absoluteString))
+        cursor = range.location + range.length
+    }
+    emitNonLink(NSRange(location: cursor, length: s.length - cursor))
+
+    return MarkdownCodec.serialize(runs)
 }
 
-/// Rebuilds an NSAttributedString from segments so existing topics / replies
-/// load into the editor with styling preserved. Emojis are reinserted as
-/// inline attachments; images are reinserted as inline image attachments
-/// using `images[blobID]` for the raw bytes (nil values render as empty
-/// boxes — the segment is still round-tripped on save).
-func attributedString(fromSegments segs: [ContentDocument.Segment],
+/// Hydrate a markdown body into the editor's NSAttributedString. Emojis are
+/// reinserted as inline attachments; images are reinserted as inline image
+/// attachments using `images[blobID]` for the raw bytes (+ dimensions). A
+/// missing entry yields a 1×1 box — the markdown still round-trips because
+/// the blob marker rides on the attachment.
+func attributedString(fromMarkdown body: String,
                       catalog: EmojiCatalog,
-                      images: [String: Data] = [:]) -> NSAttributedString {
+                      images: [String: (data: Data, w: Int, h: Int)] = [:]) -> NSAttributedString {
+    let runs = MarkdownCodec.parse(body, catalog: catalog)
     let m = NSMutableAttributedString()
-    let nlAttrs = RichTextAttributes.typing(for: nil)
+    let nlAttrs = RichTextAttributes.typing(for: [])
 
     // Mirror `ComposerView.insertImage` so loaded images live on their own
     // paragraph. Without surrounding `\n`s the image attachment's paragraph
@@ -432,12 +452,12 @@ func attributedString(fromSegments segs: [ContentDocument.Segment],
         }
     }
 
-    for seg in segs {
-        switch seg {
+    for run in runs {
+        switch run {
         case .text(let s):
             consumePendingTrailing(nextStartsWithNewline: s.first == "\n")
-            m.append(NSAttributedString(string: s, attributes: RichTextAttributes.typing(for: nil)))
-        case .styledText(let s, let style):
+            m.append(NSAttributedString(string: s, attributes: RichTextAttributes.typing(for: [])))
+        case .styled(let s, let style):
             consumePendingTrailing(nextStartsWithNewline: s.first == "\n")
             m.append(NSAttributedString(string: s, attributes: RichTextAttributes.typing(for: style)))
         case .emoji(let id):
@@ -445,13 +465,22 @@ func attributedString(fromSegments segs: [ContentDocument.Segment],
             if let item = catalog.item(id) {
                 m.append(emojiAttachmentString(item: item))
             }
-        case .image(let blob, let w, let h):
+        case .image(let blob):
             consumePendingTrailing(nextStartsWithNewline: false)
             if m.length > 0, !endsWithNewline() {
                 m.append(NSAttributedString(string: "\n", attributes: nlAttrs))
             }
-            m.append(imageAttachmentString(blobID: blob, w: w, h: h, data: images[blob]))
+            let info = images[blob]
+            m.append(imageAttachmentString(blobID: blob,
+                                           w: info?.w ?? 1,
+                                           h: info?.h ?? 1,
+                                           data: info?.data))
             pendingTrailingNL = true
+        case .link(let text, let url):
+            consumePendingTrailing(nextStartsWithNewline: text.first == "\n")
+            var attrs = RichTextAttributes.typing(for: [])
+            if let u = URL(string: url) { attrs[.link] = u }
+            m.append(NSAttributedString(string: text, attributes: attrs))
         }
     }
     consumePendingTrailing(nextStartsWithNewline: false)

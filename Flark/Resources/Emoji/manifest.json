@@ -1,39 +1,11 @@
 {
-  "mostUsed": [
+  "defaultMostUsed": [
     "lol",
     "facepalm",
     "thumbsup_v2",
     "wink",
     "sob",
-    "cry",
-    "beamingface_v1",
-    "blush",
-    "laugh",
-    "dull",
-    "smirk",
-    "smart",
-    "glance",
-    "yeah",
-    "tears",
-    "thanks_v2",
-    "fighton_v2",
-    "fingerheart_v2",
-    "scowl",
-    "coldsweat_v1",
-    "wow",
-    "enough",
-    "embarrassed",
-    "strive",
-    "blubber",
-    "thanksface_v1",
-    "youarethebest",
-    "bull",
-    "roarforyou",
-    "darkyouarethebest_v1",
-    "lightyouarethebest_v1",
-    "mediumdarkyouarethebest_v1",
-    "mediumlightyouarethebest_v1",
-    "mediumyouarethebest_v1"
+    "cry"
   ],
   "items": [
     {

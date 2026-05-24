@@ -82,35 +82,40 @@ private var emojiImageCache: [String: Image] = [:]
 #if canImport(UIKit)
 import UIKit
 
-/// Compose an NSAttributedString from text + emoji segments, using the same
-/// `emojiAttachmentString` helper as the editor. Inline `[alias]` patterns in
-/// text segments are resolved via the catalog so legacy Lark-imported content
-/// still renders stickers without a migration. `.image` segments are skipped
-/// — callers split the document at image boundaries and render those as
-/// separate `BlobImage` blocks.
+/// Compose an NSAttributedString from a markdown body. Image runs in the
+/// parsed body are skipped — callers split the document at image boundaries
+/// and render those as separate `BlobImage` blocks. After laying out the
+/// typed runs we run a URL auto-detector for any bare URLs the user typed as
+/// plain text (markdown `[text](url)` links already carry `.link` from the
+/// typed pass).
 ///
-/// Because we go through `NSTextAttachment.bounds`, the emoji glyph lines up
-/// with the surrounding text identically in the editor and in every display
-/// surface — there's no per-callsite empirical baseline-offset to tune.
-func attributedInlineText(from segs: [ContentDocument.Segment],
+/// Because emoji and image attachments go through `NSTextAttachment.bounds`,
+/// glyphs line up identically in the editor and in every display surface.
+func attributedInlineText(body: String,
                           catalog: EmojiCatalog,
                           font: UIFont = .preferredFont(forTextStyle: .body)) -> NSAttributedString {
     let m = NSMutableAttributedString()
-    for seg in segs {
-        switch seg {
+    for run in MarkdownCodec.parse(body, catalog: catalog) {
+        switch run {
         case .text(let s):
-            m.append(attributedRunWithAliases(s, catalog: catalog, font: font, style: nil))
-        case .styledText(let s, let style):
-            m.append(attributedRunWithAliases(s, catalog: catalog, font: font, style: style))
+            m.append(NSAttributedString(string: s, attributes: inlineTextAttrs(font: font, style: [])))
+        case .styled(let s, let style):
+            m.append(NSAttributedString(string: s, attributes: inlineTextAttrs(font: font, style: style)))
         case .emoji(let id):
             if let item = catalog.item(id) {
                 m.append(emojiAttachmentString(item: item, font: font))
             } else {
                 m.append(NSAttributedString(string: "[\(id)]",
-                                            attributes: inlineTextAttrs(font: font, style: nil)))
+                                            attributes: inlineTextAttrs(font: font, style: [])))
             }
         case .image:
+            // Inline preview path skips images entirely; block renderer
+            // (`ContentDocumentView`) splits on them and uses BlobImage.
             break
+        case .link(let text, let url):
+            var attrs = inlineTextAttrs(font: font, style: [])
+            if let u = URL(string: url) { attrs[.link] = u }
+            m.append(NSAttributedString(string: text, attributes: attrs))
         }
     }
     autoLinkifyAttributed(m)
@@ -118,68 +123,31 @@ func attributedInlineText(from segs: [ContentDocument.Segment],
 }
 
 private func inlineTextAttrs(font: UIFont,
-                             style: ContentDocument.TextStyle?) -> [NSAttributedString.Key: Any] {
+                             style: Style) -> [NSAttributedString.Key: Any] {
+    var traits: UIFontDescriptor.SymbolicTraits = []
+    if style.contains(.bold) { traits.insert(.traitBold) }
+    if style.contains(.italic) { traits.insert(.traitItalic) }
     var f = font
-    switch style {
-    case .bold:
-        let d = font.fontDescriptor.withSymbolicTraits(.traitBold) ?? font.fontDescriptor
+    if !traits.isEmpty, let d = font.fontDescriptor.withSymbolicTraits(traits) {
         f = UIFont(descriptor: d, size: 0)
-    case .italic:
-        let d = font.fontDescriptor.withSymbolicTraits(.traitItalic) ?? font.fontDescriptor
-        f = UIFont(descriptor: d, size: 0)
-    case nil:
-        break
     }
     return [.font: f, .foregroundColor: UIColor.label]
-}
-
-/// Walk a plain-text run and emit attribute-string fragments, replacing
-/// `[alias]` matches with their emoji attachments. Lark md exports escape
-/// brackets (`\[笑哭\]`), so the pattern accepts optional backslashes too —
-/// otherwise the leading `\` would leak through as a stray character.
-private func attributedRunWithAliases(_ s: String,
-                                      catalog: EmojiCatalog,
-                                      font: UIFont,
-                                      style: ContentDocument.TextStyle?) -> NSAttributedString {
-    let attrs = inlineTextAttrs(font: font, style: style)
-    let m = NSMutableAttributedString()
-    let pattern = #"\\?\[([^\[\]\\\n]{1,30})\\?\]"#
-    guard let regex = try? NSRegularExpression(pattern: pattern) else {
-        m.append(NSAttributedString(string: s, attributes: attrs))
-        return m
-    }
-    let ns = s as NSString
-    let matches = regex.matches(in: s, range: NSRange(location: 0, length: ns.length))
-    var cursor = 0
-    for match in matches {
-        let inner = ns.substring(with: match.range(at: 1))
-        guard let item = catalog.item(alias: inner) else { continue }
-        if match.range.location > cursor {
-            let chunk = ns.substring(with: NSRange(location: cursor,
-                                                   length: match.range.location - cursor))
-            if !chunk.isEmpty {
-                m.append(NSAttributedString(string: chunk, attributes: attrs))
-            }
-        }
-        m.append(emojiAttachmentString(item: item, font: font))
-        cursor = match.range.location + match.range.length
-    }
-    if cursor < ns.length {
-        let tail = ns.substring(with: NSRange(location: cursor, length: ns.length - cursor))
-        m.append(NSAttributedString(string: tail, attributes: attrs))
-    }
-    return m
 }
 
 private let _inlineURLDetector: NSDataDetector? =
     try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
+/// Add `.link` to any auto-detected URL ranges that don't already carry one.
+/// We skip ranges already linked so an explicit `[text](url)` markdown link
+/// keeps its declared destination even if the display text happens to be a
+/// URL pattern itself.
 private func autoLinkifyAttributed(_ m: NSMutableAttributedString) {
     guard let detector = _inlineURLDetector else { return }
     let s = m.string
     let full = NSRange(location: 0, length: (s as NSString).length)
     detector.enumerateMatches(in: s, options: [], range: full) { match, _, _ in
         guard let match, let url = match.url else { return }
+        if m.attribute(.link, at: match.range.location, effectiveRange: nil) != nil { return }
         m.addAttribute(.link, value: url, range: match.range)
     }
 }
@@ -524,79 +492,117 @@ struct ContentDocumentView: View {
 
     private var blocks: [Block] {
         var out: [Block] = []
-        var run: [ContentDocument.Segment] = []
-        // Track whether the next text-bearing segment we accumulate should
-        // have one leading `\n` stripped — set right after we flush an image
-        // so the editor's `\n[image]\n` wrapping doesn't survive into the
-        // text block below the rendered image as a phantom empty line.
+        var bucket: [Run] = []
+        // Track whether the next text-bearing run we accumulate should have
+        // one leading `\n` stripped — set right after we flush an image so
+        // the editor's `\n[image]\n` wrapping doesn't survive into the text
+        // block below the rendered image as a phantom empty line.
         var stripNextLeadingNL = false
 
+        // Parse once so we can both (a) walk the runs to build blocks AND
+        // (b) decide up-front whether to render the whole doc at the big
+        // "sticker reply" size. A run is treated as sticker-only when
+        // there's at least one emoji and all text is whitespace.
+        let allRuns = MarkdownCodec.parse(doc.body, catalog: model.emoji)
+        #if canImport(UIKit)
+        let baseFont = UIFont.preferredFont(forTextStyle: .body)
+        let font: UIFont = isEmojiOnly(allRuns)
+            ? baseFont.withSize(baseFont.pointSize * stickerMagnification)
+            : baseFont
+        #endif
+
         func flush() {
-            guard !run.isEmpty else { return }
+            guard !bucket.isEmpty else { return }
+            let body = MarkdownCodec.serialize(bucket)
             #if canImport(UIKit)
-            let attr = attributedInlineText(from: run, catalog: model.emoji)
+            let attr = attributedInlineText(body: body, catalog: model.emoji, font: font)
             #else
-            let plain = run.reduce(into: "") { acc, seg in
-                switch seg {
-                case .text(let s), .styledText(let s, _): acc += s
+            let plain = bucket.reduce(into: "") { acc, run in
+                switch run {
+                case .text(let s), .styled(let s, _): acc += s
                 case .emoji(let id):
                     acc += (model.emoji.item(id)?.placeholder ?? "[\(id)]")
                 case .image: break
+                case .link(let text, _): acc += text
                 }
             }
             let attr = NSAttributedString(string: plain)
             #endif
             if attr.length > 0 { out.append(.text(attr)) }
-            run = []
+            bucket = []
         }
-        for seg in doc.segments {
-            if case .image(let blob, _, _) = seg {
-                stripTrailingNL(in: &run)
+
+        for run in allRuns {
+            if case .image(let blob) = run {
+                stripTrailingNL(in: &bucket)
                 flush()
                 out.append(.image(blob))
                 stripNextLeadingNL = true
             } else {
-                var next = seg
+                var next = run
                 if stripNextLeadingNL {
                     next = trimmingLeadingNL(next)
                     stripNextLeadingNL = false
                 }
-                if !isEmptyText(next) { run.append(next) }
+                if !isEmptyText(next) { bucket.append(next) }
             }
         }
         flush()
         return out
     }
 
-    private func stripTrailingNL(in run: inout [ContentDocument.Segment]) {
-        guard let last = run.last else { return }
+    /// Body-text → big-sticker scale factor when a reply/topic is just an
+    /// emoji (the iMessage-style "jumbo emoji" treatment).
+    private var stickerMagnification: CGFloat { 1.8 }
+
+    /// True when the run sequence has at least one emoji and no
+    /// non-whitespace text/styled run — images and links disqualify too,
+    /// since those need normal layout sizing.
+    private func isEmojiOnly(_ runs: [Run]) -> Bool {
+        var hasEmoji = false
+        for run in runs {
+            switch run {
+            case .emoji: hasEmoji = true
+            case .text(let s), .styled(let s, _):
+                if !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return false
+                }
+            case .image, .link:
+                return false
+            }
+        }
+        return hasEmoji
+    }
+
+    private func stripTrailingNL(in bucket: inout [Run]) {
+        guard let last = bucket.last else { return }
         switch last {
         case .text(let s) where s.hasSuffix("\n"):
             let t = String(s.dropLast())
-            if t.isEmpty { run.removeLast() } else { run[run.count - 1] = .text(t) }
-        case .styledText(let s, let style) where s.hasSuffix("\n"):
+            if t.isEmpty { bucket.removeLast() } else { bucket[bucket.count - 1] = .text(t) }
+        case .styled(let s, let style) where s.hasSuffix("\n"):
             let t = String(s.dropLast())
-            if t.isEmpty { run.removeLast() } else { run[run.count - 1] = .styledText(text: t, style: style) }
+            if t.isEmpty { bucket.removeLast() } else { bucket[bucket.count - 1] = .styled(t, style) }
         default:
             break
         }
     }
 
-    private func trimmingLeadingNL(_ seg: ContentDocument.Segment) -> ContentDocument.Segment {
-        switch seg {
+    private func trimmingLeadingNL(_ run: Run) -> Run {
+        switch run {
         case .text(let s) where s.hasPrefix("\n"):
             return .text(String(s.dropFirst()))
-        case .styledText(let s, let style) where s.hasPrefix("\n"):
-            return .styledText(text: String(s.dropFirst()), style: style)
+        case .styled(let s, let style) where s.hasPrefix("\n"):
+            return .styled(String(s.dropFirst()), style)
         default:
-            return seg
+            return run
         }
     }
 
-    private func isEmptyText(_ seg: ContentDocument.Segment) -> Bool {
-        switch seg {
+    private func isEmptyText(_ run: Run) -> Bool {
+        switch run {
         case .text(let s): return s.isEmpty
-        case .styledText(let s, _): return s.isEmpty
+        case .styled(let s, _): return s.isEmpty
         default: return false
         }
     }

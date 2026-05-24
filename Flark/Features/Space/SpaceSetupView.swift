@@ -26,14 +26,18 @@ struct SpaceSetupView: View {
                 }
                 .pickerStyle(.segmented)
 
-                field("名称", text: $name, placeholder: "如：日常 / 想法 / 小组")
+                field("名称", text: $name, prompt: Text("如：日常 / 想法 / 小组"))
 
                 if kind == .webdav {
-                    field("WebDAV 地址", text: $url, placeholder: "https://dav.example.com/flark/")
-                    field("账号", text: $user, placeholder: "用户名")
+                    // `Text(verbatim:)` so the URL-shaped placeholder isn't
+                    // auto-linkified by LocalizedStringKey markdown parsing
+                    // (which would render it blue instead of placeholder gray).
+                    field("WebDAV 地址", text: $url,
+                          prompt: Text(verbatim: "https://dav.example.com/flark/"))
+                    field("账号", text: $user, prompt: Text("用户名"))
                     secureField("密码", text: $password)
                     field("群 ID（可选）", text: $spaceId,
-                          placeholder: "加入已有群填群 ID；留空则新建")
+                          prompt: Text("加入已有群填群 ID；留空则新建"))
                     Text("凭据仅存本机钥匙串。")
                         .font(.footnote).foregroundStyle(.secondary)
                 } else {
@@ -91,21 +95,26 @@ struct SpaceSetupView: View {
         onConnected()
     }
 
-    private func field(_ label: String, text: Binding<String>, placeholder: String) -> some View {
-        spaceFormField(label, text: text, placeholder: placeholder)
+    private func field(_ label: LocalizedStringKey, text: Binding<String>,
+                       prompt: Text) -> some View {
+        spaceFormField(label, text: text, prompt: prompt)
     }
 
-    private func secureField(_ label: String, text: Binding<String>) -> some View {
+    private func secureField(_ label: LocalizedStringKey, text: Binding<String>) -> some View {
         spaceFormSecureField(label, text: text)
     }
 }
 
 /// Shared text field styling for `SpaceSetupView` / `SpaceEditView`.
-fileprivate func spaceFormField(_ label: String, text: Binding<String>,
-                                placeholder: String) -> some View {
+///
+/// The prompt is taken as a `Text` (not `LocalizedStringKey`) so callers can
+/// pass `Text(verbatim:)` for URL-shaped placeholders — `LocalizedStringKey`
+/// runs markdown parsing and would auto-linkify URLs into blue links.
+fileprivate func spaceFormField(_ label: LocalizedStringKey, text: Binding<String>,
+                                prompt: Text) -> some View {
     VStack(alignment: .leading, spacing: 7) {
         Text(label).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
-        TextField(placeholder, text: text)
+        TextField("", text: text, prompt: prompt)
             .textFieldStyle(.plain)
             #if os(iOS)
             .textInputAutocapitalization(.never)
@@ -118,12 +127,12 @@ fileprivate func spaceFormField(_ label: String, text: Binding<String>,
     }
 }
 
-fileprivate func spaceFormSecureField(_ label: String,
+fileprivate func spaceFormSecureField(_ label: LocalizedStringKey,
                                       text: Binding<String>,
-                                      placeholder: String = "••••••••") -> some View {
+                                      prompt: Text = Text(verbatim: "••••••••")) -> some View {
     VStack(alignment: .leading, spacing: 7) {
         Text(label).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
-        SecureField(placeholder, text: text)
+        SecureField("", text: text, prompt: prompt)
             .textFieldStyle(.plain)
             .padding(15)
             .background(Color.platformBackground,
@@ -158,14 +167,14 @@ struct SpaceEditView: View {
                 Text("可改名称与连接信息；群 ID 与类型不可改。")
                     .foregroundStyle(.secondary)
 
-                spaceFormField("名称", text: $name, placeholder: "如：日常 / 想法 / 小组")
+                spaceFormField("名称", text: $name, prompt: Text("如：日常 / 想法 / 小组"))
 
                 if original.kind == .webdav {
                     spaceFormField("WebDAV 地址", text: $url,
-                                   placeholder: "https://dav.example.com/flark/")
-                    spaceFormField("账号", text: $user, placeholder: "用户名")
+                                   prompt: Text(verbatim: "https://dav.example.com/flark/"))
+                    spaceFormField("账号", text: $user, prompt: Text("用户名"))
                     spaceFormSecureField("密码", text: $password,
-                                         placeholder: "留空则保持不变")
+                                         prompt: Text("留空则保持不变"))
                     HStack(spacing: 8) {
                         Text("群 ID")
                             .font(.footnote.weight(.semibold))

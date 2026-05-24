@@ -63,7 +63,11 @@ struct ComposerView: View {
 
     /// Debounce token for auto-save. Cancelled on every keystroke and
     /// flushed when the composer disappears or the app backgrounds.
-    @State private var saveTask: Task<Void, Never>?
+    /// Held in a reference box so cancel/reassign during `.onChange(of:
+    /// draftAttr)` doesn't mutate observable @State — that path tripped
+    /// SwiftUI's "action tried to update multiple times per frame" fault on
+    /// iOS 17/18 because re-renders saw the autosave task flip mid-transaction.
+    @State private var saveBox = AutosaveBox()
     /// Auto-save is disabled until the initial prefill (which may load image
     /// blobs asynchronously) lands. Otherwise the transient empty editor
     /// would immediately clear an in-progress edit draft.
@@ -76,15 +80,15 @@ struct ComposerView: View {
     #if os(iOS)
     @State private var draftAttr: NSAttributedString = NSAttributedString()
     @State private var selection = NSRange(location: 0, length: 0)
-    @State private var typingStyle: ContentDocument.TextStyle? = nil
+    @State private var typingStyle: Style = []
 
-    private var draftSegments: [ContentDocument.Segment] { segmentsFromAttributed(draftAttr) }
+    private var draftBody: String { markdownFromAttributed(draftAttr) }
     private var draftPlain: String { draftAttr.string }
     #else
     @State private var draft: String = ""
-    private var draftSegments: [ContentDocument.Segment] {
+    private var draftBody: String {
         let t = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? [] : [.text(draft)]
+        return t.isEmpty ? "" : MarkdownCodec.escape(draft)
     }
     private var draftPlain: String { draft }
     #endif
@@ -108,15 +112,20 @@ struct ComposerView: View {
         let body = saved ?? mode.initialBody
         #if os(iOS)
         Task {
-            var blobs: [String: Data] = [:]
-            for seg in body.segments {
-                if case .image(let id, _, _) = seg, blobs[id] == nil {
-                    if let d = await model.loadImage(id) { blobs[id] = d }
-                }
+            // Resolve each referenced blob's bytes AND intrinsic pixel size.
+            // The persisted body has no dimensions — the renderer decodes
+            // them from blob bytes here.
+            var images: [String: (data: Data, w: Int, h: Int)] = [:]
+            for blob in body.blobIDs where images[blob] == nil {
+                guard let data = await model.loadImage(blob) else { continue }
+                let ui = UIImage(data: data)
+                let w = Int(ui?.size.width ?? 1)
+                let h = Int(ui?.size.height ?? 1)
+                images[blob] = (data, max(w, 1), max(h, 1))
             }
-            let attr = attributedString(fromSegments: body.segments,
+            let attr = attributedString(fromMarkdown: body.body,
                                         catalog: model.emoji,
-                                        images: blobs)
+                                        images: images)
             await MainActor.run {
                 draftAttr = attr
                 selection = NSRange(location: attr.length, length: 0)
@@ -124,14 +133,9 @@ struct ComposerView: View {
             }
         }
         #else
-        // macOS `TextEditor` can't render inline images; flatten to text.
-        draft = body.segments.reduce(into: "") { acc, seg in
-            switch seg {
-            case .text(let s), .styledText(let s, _): acc += s
-            case .emoji(let id): acc += (model.emoji.item(id)?.placeholder ?? "[\(id)]")
-            case .image: break
-            }
-        }
+        // macOS `TextEditor` can't render inline images; flatten to a plain
+        // string projection that drops markdown markers and image tokens.
+        draft = body.plainText(catalog: model.emoji)
         autosaveArmed = true
         #endif
     }
@@ -141,12 +145,12 @@ struct ComposerView: View {
     /// covers the case where the user pauses, then the app is killed.
     private func scheduleAutosave() {
         guard autosaveArmed, !draftFinalized else { return }
-        saveTask?.cancel()
+        saveBox.task?.cancel()
         let doc = liveDoc
         let key = mode.draftKey
         let initial = mode.initialBody
         guard let localID = model.currentSpace?.localID else { return }
-        saveTask = Task { @MainActor in
+        saveBox.task = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 500_000_000)
             if Task.isCancelled { return }
             DraftStore.save(doc, key: key, localID: localID, initial: initial)
@@ -157,21 +161,21 @@ struct ComposerView: View {
     /// dismissed, scene backgrounded). Caller must check `autosaveArmed` so
     /// we don't overwrite a not-yet-prefilled body with the empty editor.
     private func flushAutosave() {
-        saveTask?.cancel()
+        saveBox.task?.cancel()
         guard autosaveArmed, !draftFinalized else { return }
         guard let localID = model.currentSpace?.localID else { return }
         DraftStore.save(liveDoc, key: mode.draftKey, localID: localID, initial: mode.initialBody)
     }
 
     private func clearDraft() {
-        saveTask?.cancel()
+        saveBox.task?.cancel()
         draftFinalized = true
         guard let localID = model.currentSpace?.localID else { return }
         DraftStore.clear(key: mode.draftKey, localID: localID)
     }
 
     private var liveDoc: ContentDocument {
-        ContentDocument(segments: draftSegments)
+        ContentDocument(body: draftBody)
     }
 
     /// True when the editor diverges from where the user started — i.e.,
@@ -188,10 +192,17 @@ struct ComposerView: View {
         }
     }
 
-    private var discardConfirmMessage: LocalizedStringKey {
+    private var discardConfirmTitle: LocalizedStringKey {
         switch mode {
-        case .editTopic, .editReply: return "放弃此次编辑吗？已修改的内容将不会保存。"
-        default: return "放弃这条草稿吗？"
+        case .editTopic, .editReply: return "放弃此次编辑？"
+        default: return "放弃这条草稿？"
+        }
+    }
+
+    private var discardConfirmMessage: LocalizedStringKey? {
+        switch mode {
+        case .editTopic, .editReply: return "已修改的内容将不会保存。"
+        default: return nil
         }
     }
 
@@ -200,6 +211,7 @@ struct ComposerView: View {
     /// it and the user can keep typing on the same line — no commit / no
     /// auto-newline / no re-focus dance.
     private func insertEmoji(_ item: EmojiItem) {
+        model.recordEmojiUsage(item.id)
         #if os(iOS)
         let m = NSMutableAttributedString(attributedString: draftAttr)
         let pos = min(max(selection.location, 0), m.length)
@@ -225,7 +237,7 @@ struct ComposerView: View {
         // Newlines just promote the image to its own paragraph; the actual
         // vertical gutter is controlled by the paragraph style baked into
         // `imageAttachmentString`, so plain body-font `\n`s are fine here.
-        let nlAttrs = RichTextAttributes.typing(for: nil)
+        let nlAttrs = RichTextAttributes.typing(for: [])
         let needsLeadingNL = pos > 0 && ns.substring(with: NSRange(location: pos - 1, length: 1)) != "\n"
         let needsTrailingNL = pos == m.length || ns.substring(with: NSRange(location: pos, length: 1)) != "\n"
 
@@ -247,12 +259,14 @@ struct ComposerView: View {
     #endif
 
     #if os(iOS)
-    private func toggleStyle(_ style: ContentDocument.TextStyle) {
+    /// Toggle a single style bit (`.bold` or `.italic`). Bold and italic are
+    /// independent — the same range can carry both at once.
+    private func toggleStyle(_ bit: Style) {
         if selection.length > 0 {
-            // Apply/remove on the current selection. Prior input stays editable.
-            draftAttr = RichTextAttributes.toggle(style, on: draftAttr, range: selection)
+            draftAttr = RichTextAttributes.toggle(bit, on: draftAttr, range: selection)
         } else {
-            typingStyle = (typingStyle == style) ? nil : style
+            if typingStyle.contains(bit) { typingStyle.remove(bit) }
+            else { typingStyle.insert(bit) }
         }
         focused = true
     }
@@ -289,12 +303,12 @@ struct ComposerView: View {
                         Button { toggleStyle(.bold) } label: {
                             Image(systemName: "bold")
                                 .font(toolbarIconFont)
-                                .foregroundStyle(typingStyle == .bold ? Color.accentColor : .primary)
+                                .foregroundStyle(typingStyle.contains(.bold) ? Color.accentColor : .primary)
                         }
                         Button { toggleStyle(.italic) } label: {
                             Image(systemName: "italic")
                                 .font(toolbarIconFont)
-                                .foregroundStyle(typingStyle == .italic ? Color.accentColor : .primary)
+                                .foregroundStyle(typingStyle.contains(.italic) ? Color.accentColor : .primary)
                         }
                         #endif
                         Spacer()
@@ -346,16 +360,14 @@ struct ComposerView: View {
                     focused = true
                 }
             }
-            .confirmationDialog("",
-                                isPresented: $showDiscardConfirm,
-                                titleVisibility: .hidden) {
+            .alert(discardConfirmTitle, isPresented: $showDiscardConfirm) {
                 Button("放弃更改", role: .destructive) {
                     clearDraft()
                     dismiss()
                 }
                 Button("继续编辑", role: .cancel) {}
             } message: {
-                Text(discardConfirmMessage)
+                if let msg = discardConfirmMessage { Text(msg) }
             }
             .onChange(of: photo) { _, newValue in
                 guard let newValue else { return }
@@ -457,4 +469,11 @@ struct ComposerView: View {
         .title3
         #endif
     }
+}
+
+/// Reference-typed holder for the autosave debounce task. Lets us cancel /
+/// reassign the task without SwiftUI seeing a state change — the view binds
+/// to the box reference (which never changes), not the inner task.
+final class AutosaveBox {
+    var task: Task<Void, Never>?
 }

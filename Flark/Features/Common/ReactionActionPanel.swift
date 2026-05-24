@@ -19,25 +19,26 @@ struct ReactionActionPanel: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            HStack(spacing: 10) {
-                // Top-5 frequency shortcuts; the "更多" button below opens
-                // the full picker for everything else.
-                ForEach(Array(model.emoji.mostUsed.prefix(5))) { item in
+            HStack(spacing: 12) {
+                // Top-5 frequency shortcuts; the "更多" button next to them
+                // opens the full picker for everything else. Empty until the
+                // user has actually picked emoji — in that case only "更多"
+                // shows. Same flat / no-background look as the picker grid.
+                ForEach(Array(model.mostUsedEmoji.prefix(5))) { item in
                     Button {
+                        model.recordEmojiUsage(item.id)
                         model.toggleReaction(targetID: targetID, type: targetType, emojiID: item.id)
                         dismiss()
                     } label: {
-                        EmojiGlyph(item: item, size: 28)
-                            .frame(width: 44, height: 44)
-                            .background(.quaternary, in: Circle())
+                        EmojiGlyph(item: item, size: 44)
+                            .frame(width: 52, height: 52)
                     }
                     .buttonStyle(.plain)
                 }
                 Button { showPicker = true } label: {
                     Image(systemName: "ellipsis")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                        .background(.quaternary, in: Circle())
+                        .font(.title3.weight(.semibold))
+                        .frame(width: 52, height: 52)
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -74,12 +75,14 @@ struct ReactionActionPanel: View {
         .presentationDetents([.height(detentHeight)])
         .presentationDragIndicator(.visible)
         .sheet(isPresented: $showPicker) {
+            // The picker itself already records the pick into the usage store,
+            // so we just need to apply the reaction here.
             EmojiPickerView(title: "添加表情") { item in
                 model.toggleReaction(targetID: targetID, type: targetType, emojiID: item.id)
                 dismiss()
             }
         }
-        .confirmationDialog("删除", isPresented: $confirmingDelete) {
+        .alert("删除？", isPresented: $confirmingDelete) {
             Button("删除", role: .destructive) {
                 onDelete?()
                 dismiss()
@@ -94,7 +97,7 @@ struct ReactionActionPanel: View {
 
     private var detentHeight: CGFloat {
         // 132 = reaction row only; each action row adds ~58.
-        var h: CGFloat = 132
+        var h: CGFloat = 140
         if onEdit != nil { h += 58 }
         if onDelete != nil { h += 58 }
         return h

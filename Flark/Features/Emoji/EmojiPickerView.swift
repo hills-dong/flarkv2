@@ -9,7 +9,7 @@ struct EmojiPickerView: View {
     var title: LocalizedStringKey = "选择表情"
     var onPick: (EmojiItem) -> Void
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 6)
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 6)
 
     private func label(_ cat: String) -> LocalizedStringKey {
         switch cat {
@@ -24,7 +24,7 @@ struct EmojiPickerView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     let sections: [(String, [EmojiItem])] = [
-                        ("most_used", model.emoji.mostUsed),
+                        ("most_used", model.mostUsedEmoji),
                         ("default", model.emoji.category("default")),
                     ].filter { !$1.isEmpty }
                     ForEach(sections, id: \.0) { cat, sectionItems in
@@ -35,12 +35,11 @@ struct EmojiPickerView: View {
                             LazyVGrid(columns: columns, spacing: 10) {
                                 ForEach(sectionItems) { item in
                                     Button {
+                                        model.recordEmojiUsage(item.id)
                                         onPick(item); dismiss()
                                     } label: {
-                                        EmojiGlyph(item: item, size: 30)
-                                            .frame(width: 44, height: 44)
-                                            .background(.quaternary,
-                                                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        EmojiGlyph(item: item, size: 44)
+                                            .frame(width: 52, height: 52)
                                     }
                                     .buttonStyle(.plain)
                                 }

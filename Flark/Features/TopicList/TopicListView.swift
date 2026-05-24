@@ -94,7 +94,7 @@ struct TopicListView: View {
         }
     }
 
-    private var emptyHint: String {
+    private var emptyHint: LocalizedStringKey {
         #if os(macOS)
         "点右上角 + 创建第一个话题（⇧⌘N）"
         #else
@@ -119,7 +119,7 @@ struct TopicCard: View {
                 }
                 Spacer()
             }
-            if !topic.previewSegments.isEmpty {
+            if !topic.previewBody.isEmpty {
                 previewText
             }
             if !topic.images.isEmpty {
@@ -159,17 +159,12 @@ struct TopicCard: View {
     private var previewText: some View {
         #if canImport(UIKit)
         AttrInlineText(
-            attributed: attributedInlineText(from: topic.previewSegments, catalog: model.emoji),
+            attributed: attributedInlineText(body: topic.previewBody, catalog: model.emoji),
             maxLines: 4
         )
         #else
-        Text(topic.previewSegments.reduce(into: "") { acc, seg in
-            switch seg {
-            case .text(let s), .styledText(let s, _): acc += s
-            case .emoji(let id): acc += (model.emoji.item(id)?.placeholder ?? "[\(id)]")
-            case .image: break
-            }
-        }).font(.body).lineLimit(4)
+        Text(ContentDocument(body: topic.previewBody).plainText(catalog: model.emoji))
+            .font(.body).lineLimit(4)
         #endif
     }
 }

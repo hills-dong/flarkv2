@@ -1,6 +1,17 @@
 {
   "sourceLanguage": "zh-Hans",
   "strings": {
+    "  ·  已编辑": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "  ·  edited"
+          }
+        }
+      }
+    },
     "  ·  已编辑 %@": {
       "extractionState": "manual",
       "localizations": {
@@ -210,17 +221,6 @@
         }
       }
     },
-    "回复点什么…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reply something…"
-          }
-        }
-      }
-    },
     "凭据仅存本机钥匙串。": {
       "extractionState": "manual",
       "localizations": {
@@ -316,6 +316,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Delete Space"
+          }
+        }
+      }
+    },
+    "删除？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete?"
           }
         }
       }
@@ -426,6 +437,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Replies · %lld"
+          }
+        }
+      }
+    },
+    "回复点什么…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reply something…"
           }
         }
       }
@@ -584,6 +606,17 @@
         }
       }
     },
+    "已修改的内容将不会保存。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your changes will not be saved."
+          }
+        }
+      }
+    },
     "已复制恢复码": {
       "extractionState": "manual",
       "localizations": {
@@ -723,6 +756,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "Activity Log"
+          }
+        }
+      }
+    },
+    "放弃更改": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard"
+          }
+        }
+      }
+    },
+    "放弃此次编辑？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard this edit?"
+          }
+        }
+      }
+    },
+    "放弃这条草稿？": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard this draft?"
           }
         }
       }
@@ -1068,6 +1134,17 @@
         }
       }
     },
+    "继续编辑": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep editing"
+          }
+        }
+      }
+    },
     "继续输入…": {
       "extractionState": "manual",
       "localizations": {
@@ -1284,6 +1361,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Connect a Space"
+          }
+        }
+      }
+    },
+    "选择一个话题": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select a topic"
           }
         }
       }

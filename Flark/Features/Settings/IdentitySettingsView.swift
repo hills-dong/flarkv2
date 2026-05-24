@@ -10,9 +10,17 @@ struct IdentitySettingsView: View {
     @State private var exportCode: String?
     @State private var importCode = ""
     @State private var importPass = ""
-    @State private var message: String?
+    @State private var message: Message?
     @State private var showLogout = false
     @State private var showDeleteAccount = false
+
+    /// Footer status line. Held as a `LocalizedStringKey` so the Chinese key
+    /// runs through `Localizable.xcstrings`; `isError` drives the red tint
+    /// without resorting to substring matching on the rendered text.
+    private struct Message {
+        var text: LocalizedStringKey
+        var isError: Bool
+    }
 
     var body: some View {
         NavigationStack {
@@ -23,8 +31,16 @@ struct IdentitySettingsView: View {
                         LabeledContent("昵称", value: model.displayName)
                     }
                     Section {
-                        Label("已开启 iCloud 钥匙串同步", systemImage: "checkmark.icloud")
-                            .foregroundStyle(.green)
+                        // Match the `操作日志` NavigationLink row's appearance:
+                        // accent-tinted icon + primary text. A bare `Label` in
+                        // a Form would render the icon in primary color, which
+                        // looks unlike every other row in this screen.
+                        Label {
+                            Text("已开启 iCloud 钥匙串同步")
+                        } icon: {
+                            Image(systemName: "checkmark.icloud")
+                                .foregroundStyle(.tint)
+                        }
                         Text("同 Apple ID 且开启钥匙串同步的设备自动共享身份。跨 Apple ID 或换平台时改用下方恢复码。")
                             .font(.footnote).foregroundStyle(.secondary)
                     } header: { Text("自动同步") }
@@ -35,7 +51,9 @@ struct IdentitySettingsView: View {
                         SecureField("设置一个口令（恢复时需要）", text: $exportPass)
                         Button("生成恢复码") {
                             exportCode = model.exportIdentity(passphrase: exportPass)
-                            message = exportCode == nil ? "请先输入口令" : nil
+                            message = exportCode == nil
+                                ? Message(text: "请先输入口令", isError: true)
+                                : nil
                         }
                         .disabled(exportPass.isEmpty)
                         if let code = exportCode {
@@ -47,7 +65,7 @@ struct IdentitySettingsView: View {
                                 .textSelection(.enabled).lineLimit(4)
                             Button {
                                 copyToClipboard(code)
-                                message = "已复制恢复码"
+                                message = Message(text: "已复制恢复码", isError: false)
                             } label: { Label("复制恢复码", systemImage: "doc.on.doc") }
                         }
                     } header: { Text("导出恢复码") }
@@ -60,10 +78,11 @@ struct IdentitySettingsView: View {
                     SecureField("导出时设置的口令", text: $importPass)
                     Button("导入并成为该身份") {
                         if model.importIdentity(code: importCode, passphrase: importPass) {
-                            message = "导入成功"
+                            message = Message(text: "导入成功", isError: false)
                             dismiss()
                         } else {
-                            message = "导入失败：恢复码或口令不正确"
+                            message = Message(text: "导入失败：恢复码或口令不正确",
+                                              isError: true)
                         }
                     }
                     .disabled(importCode.isEmpty || importPass.isEmpty)
@@ -117,8 +136,8 @@ struct IdentitySettingsView: View {
                 }
 
                 if let message {
-                    Text(message).font(.footnote)
-                        .foregroundStyle(message.contains("失败") ? .red : .green)
+                    Text(message.text).font(.footnote)
+                        .foregroundStyle(message.isError ? .red : .green)
                 }
             }
             .navigationTitle("账号与多设备")

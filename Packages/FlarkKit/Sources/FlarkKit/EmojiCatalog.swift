@@ -31,23 +31,23 @@ public struct EmojiItem: Codable, Identifiable, Equatable, Sendable {
 }
 
 public struct EmojiManifest: Codable, Sendable {
-    /// IDs that surface in the picker's `最常使用` shortcut row, ordered by
-    /// usage frequency. Items here are ALSO present in `items` (they appear
-    /// in both the shortcut section and the default grid).
-    public var mostUsed: [String] = []
+    /// Seed IDs the picker shows in `最常使用` before the user has any local
+    /// usage history — purely so the row isn't empty on first launch. Once the
+    /// user picks anything, their own picks rank ahead of these.
+    public var defaultMostUsed: [String] = []
     public var items: [EmojiItem]
 }
 
 public final class EmojiCatalog: @unchecked Sendable {
     public private(set) var items: [EmojiItem]
-    public let mostUsedIDs: [String]
+    public let seedMostUsedIDs: [String]
     private let byID: [String: EmojiItem]
     /// Lowercased alias → id, for case-insensitive placeholder lookup.
     private let aliasIndex: [String: String]
 
-    public init(items: [EmojiItem], mostUsedIDs: [String] = []) {
+    public init(items: [EmojiItem], seedMostUsedIDs: [String] = []) {
         self.items = items
-        self.mostUsedIDs = mostUsedIDs
+        self.seedMostUsedIDs = seedMostUsedIDs
         self.byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var idx: [String: String] = [:]
         for item in items {
@@ -58,11 +58,6 @@ public final class EmojiCatalog: @unchecked Sendable {
         self.aliasIndex = idx
     }
 
-    /// Most-used items resolved through `byID`, keeping the manifest order.
-    public var mostUsed: [EmojiItem] {
-        mostUsedIDs.compactMap { byID[$0] }
-    }
-
     /// Load from a manifest.json URL; returns an empty catalog on failure
     /// (no built-in fallback — picker/glyph show a "missing" state instead).
     public static func load(manifestURL: URL?) -> EmojiCatalog {
@@ -71,7 +66,7 @@ public final class EmojiCatalog: @unchecked Sendable {
               let manifest = try? JSONDecoder().decode(EmojiManifest.self, from: data) else {
             return EmojiCatalog(items: [])
         }
-        return EmojiCatalog(items: manifest.items, mostUsedIDs: manifest.mostUsed)
+        return EmojiCatalog(items: manifest.items, seedMostUsedIDs: manifest.defaultMostUsed)
     }
 
     public func item(_ id: String) -> EmojiItem? { byID[id] }
