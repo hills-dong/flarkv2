@@ -165,6 +165,11 @@ struct AttrInlineText: UIViewRepresentable {
     /// 0 = unlimited, otherwise truncate with `…` at the tail (matches
     /// SwiftUI's `.lineLimit(_:)` for the preview row case).
     var maxLines: Int = 0
+    /// Detail-page only: called after each layout pass with the per-glyph
+    /// frame (in the UITextView's own coordinates) of every emoji
+    /// attachment found in `attributed`. List previews leave this nil and
+    /// pay no extra layout cost.
+    var onEmojiLayouts: (([InlineEmojiLayout]) -> Void)? = nil
 
     func makeUIView(context: Context) -> UITextView {
         let tv = PassthroughTextView()
@@ -194,6 +199,39 @@ struct AttrInlineText: UIViewRepresentable {
         }
         uiView.textContainer.maximumNumberOfLines = maxLines
         uiView.textContainer.lineBreakMode = maxLines > 0 ? .byTruncatingTail : .byWordWrapping
+        guard let callback = onEmojiLayouts else { return }
+        // Defer to the next runloop so layoutManager has the final glyph
+        // rects (when called from inside updateUIView, glyph rects can be
+        // stale if the attributed text just changed).
+        DispatchQueue.main.async {
+            let layouts = collectEmojiLayouts(in: uiView)
+            if !layouts.isEmpty { callback(layouts) }
+        }
+    }
+
+    /// Walk every `NSTextAttachment` in the laid-out text and emit a layout
+    /// entry for those carrying an `emojiIDAttributeName`. Frames are in
+    /// the text view's own coordinate space (matching the SwiftUI frame
+    /// the parent reads via GeometryReader).
+    private func collectEmojiLayouts(in tv: UITextView) -> [InlineEmojiLayout] {
+        guard let attr = tv.attributedText, attr.length > 0 else { return [] }
+        let manager = tv.layoutManager
+        let container = tv.textContainer
+        let inset = tv.textContainerInset
+        var out: [InlineEmojiLayout] = []
+        let full = NSRange(location: 0, length: attr.length)
+        attr.enumerateAttribute(.attachment, in: full, options: []) { value, range, _ in
+            guard value is NSTextAttachment else { return }
+            guard let id = attr.attribute(emojiIDAttributeName, at: range.location,
+                                          effectiveRange: nil) as? String else { return }
+            let glyphRange = manager.glyphRange(forCharacterRange: range,
+                                                actualCharacterRange: nil)
+            var rect = manager.boundingRect(forGlyphRange: glyphRange, in: container)
+            rect.origin.x += inset.left
+            rect.origin.y += inset.top
+            out.append(InlineEmojiLayout(id: id, frameInTextView: rect))
+        }
+        return out
     }
 
     /// Without this, UITextView's intrinsic width is the unwrapped text
@@ -461,6 +499,10 @@ struct ContentDocumentView: View {
     /// When false, images render as static previews (taps fall through to an
     /// enclosing row/link instead of opening the zoom viewer).
     var imagesZoomable: Bool = true
+    /// Detail-page only: when set, inline text blocks route through
+    /// `InlineTextWithFlyIn` so emoji attachments fly in from the left the
+    /// first time they're seen this launch. List previews leave this nil.
+    var emojiFlyInSpace: String? = nil
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -476,7 +518,11 @@ struct ContentDocumentView: View {
         switch block {
         case .text(let attr):
             #if canImport(UIKit)
-            AttrInlineText(attributed: attr)
+            if let space = emojiFlyInSpace {
+                InlineTextWithFlyIn(attributed: attr, space: space)
+            } else {
+                AttrInlineText(attributed: attr)
+            }
             #else
             Text(attr.string).font(.body)
             #endif

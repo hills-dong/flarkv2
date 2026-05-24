@@ -20,10 +20,16 @@ struct RichTextEditor: UIViewRepresentable {
     /// binding doesn't reliably call `becomeFirstResponder` through a sheet
     /// transition. This flag short-circuits the dance.
     var autoFocusOnAppear: Bool = false
+    /// Optional escape hatch for callers that need the underlying
+    /// `UITextView` — e.g. the picker → editor emoji fly-in needs the
+    /// caret rect in window coordinates. Held weak inside the handle so
+    /// the view's lifecycle is unaffected.
+    var handle: EditorHandle? = nil
 
     func makeUIView(context: Context) -> UITextView {
         let tv = AutoFocusTextView()
         tv.delegate = context.coordinator
+        handle?.textView = tv
         tv.font = UIFont.preferredFont(forTextStyle: .body)
         tv.backgroundColor = .clear
         tv.isScrollEnabled = false

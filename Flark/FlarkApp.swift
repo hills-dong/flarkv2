@@ -3,12 +3,19 @@ import SwiftUI
 @main
 struct FlarkApp: App {
     @State private var model = AppModel()
+    /// App-scope flight host so the topic list's reaction bars also
+    /// have a place to register their chip + tail anchors. The detail
+    /// page overrides this with its own scoped instance (so the
+    /// detail-only easter-egg overlay doesn't share state with the
+    /// list); the list page reads only via `\.optionalEmojiFlightHost`.
+    @State private var listFlightHost = EmojiFlightHost()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(model)
+                .environment(\.optionalEmojiFlightHost, listFlightHost)
                 .task { model.bootstrap() }
                 .tint(.accentColor)
         }

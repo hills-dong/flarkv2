@@ -94,6 +94,16 @@ struct ComposerView: View {
     #endif
 
     @State private var didPrefill = false
+    #if os(iOS)
+    /// Holds a weak ref to the underlying UITextView so the emoji picker
+    /// dismissal handler can compute the caret rect in window coordinates
+    /// and animate the picked emoji along an arc into place.
+    @State private var editorHandle = EditorHandle()
+    /// Live flight currently animating (nil when no emoji is in the
+    /// air). Retained so the `.onChange(of: selection)` handler can
+    /// re-aim its landing target when the cursor moves mid-flight.
+    @State private var activePickerFlight: EmojiPickerFlight? = nil
+    #endif
 
     /// Load the initial body into the editor as one editable WYSIWYG
     /// attributed string: text / styled text / emoji / images all become
@@ -206,15 +216,86 @@ struct ComposerView: View {
         }
     }
 
-    /// Splice an emoji into the live editor at the current caret. The image
-    /// rides along as an `NSTextAttachment`, so the cursor lands right after
-    /// it and the user can keep typing on the same line — no commit / no
-    /// auto-newline / no re-focus dance.
-    private func insertEmoji(_ item: EmojiItem) {
+    #if os(iOS)
+    /// Picker dismiss → start arc fly → insert on landing. The actual
+    /// `insertEmoji(_:)` is deferred to the animation's `onLanded`
+    /// callback so the new attachment appears at the exact moment the
+    /// giant glyph collapses on top of it.
+    ///
+    /// The flight handle is retained in `activePickerFlight` so the
+    /// `.onChange(of: selection)` modifier (further down) can re-aim
+    /// the landing point if the user moves the cursor while the giant
+    /// emoji is still in the air. On landing we insert at whatever the
+    /// cursor's current position is, so the visual landing point and
+    /// the actual text-insertion position stay in sync.
+    private func pickEmoji(_ item: EmojiItem, fromCell sourceFrame: CGRect) {
+        guard let tv = editorHandle.textView,
+              let window = EmojiPickerFlight.keyWindow
+        else {
+            insertEmoji(item)
+            focused = true
+            return
+        }
+        let from = CGPoint(x: sourceFrame.midX, y: sourceFrame.midY)
+        let to = caretWindowCenter(in: tv,
+                                   atLocation: selection.location)
+
+        focused = true
+
+        let landingSize = UIFont.preferredFont(forTextStyle: .body)
+            .lineHeight * 1.44
+        activePickerFlight = EmojiPickerFlight.fly(
+            item: item,
+            fromCenter: from, toCenter: to,
+            pickerGlyphSize: 44, landingGlyphSize: landingSize,
+            in: window) {
+            // Insert at the LATEST cursor position so the descending
+            // arc and the inserted attachment line up — the trajectory
+            // tracker has been re-aiming via `.onChange(of: selection)`
+            // throughout the flight.
+            insertEmoji(item)
+            focused = true
+            activePickerFlight = nil
+        }
+    }
+
+    /// Window-coord centre point of the caret at a given text-offset
+    /// in the editor's `UITextView`. Returns `.zero` if the position
+    /// can't be resolved (shouldn't happen in normal use).
+    private func caretWindowCenter(in tv: UITextView,
+                                   atLocation loc: Int) -> CGPoint {
+        let clamped = max(0, min(loc, tv.attributedText?.length ?? 0))
+        guard let pos = tv.position(from: tv.beginningOfDocument,
+                                    offset: clamped) else { return .zero }
+        let local = tv.caretRect(for: pos)
+        let win = tv.convert(local, to: nil)
+        return CGPoint(x: win.midX, y: win.midY)
+    }
+
+    /// Called by the `.onChange(of: selection)` modifier — when the
+    /// user moves the cursor while a picker flight is in the air, push
+    /// the new caret position to the flight so its descending phase
+    /// re-aims at the new spot. No-op when no flight is active.
+    private func retargetActiveFlightIfNeeded() {
+        guard let flight = activePickerFlight,
+              let tv = editorHandle.textView else { return }
+        flight.updateTarget(
+            caretWindowCenter(in: tv, atLocation: selection.location))
+    }
+    #endif
+
+    /// Splice an emoji into the live editor at the current caret (or at
+    /// an explicit position, used by the arc fly-in to land at the
+    /// caret position captured before the animation started). The image
+    /// rides along as an `NSTextAttachment`, so the cursor lands right
+    /// after it and the user can keep typing on the same line — no
+    /// commit / no auto-newline / no re-focus dance.
+    private func insertEmoji(_ item: EmojiItem, at explicitLocation: Int? = nil) {
         model.recordEmojiUsage(item.id)
         #if os(iOS)
         let m = NSMutableAttributedString(attributedString: draftAttr)
-        let pos = min(max(selection.location, 0), m.length)
+        let raw = explicitLocation ?? selection.location
+        let pos = min(max(raw, 0), m.length)
         let frag = emojiAttachmentString(item: item)
         m.insert(frag, at: pos)
         draftAttr = m
@@ -355,11 +436,17 @@ struct ComposerView: View {
                 }
             }
             .sheet(isPresented: $showEmoji) {
-                EmojiPickerView(title: "选择表情") { item in
-                    insertEmoji(item)
-                    focused = true
+                EmojiPickerView(title: "选择表情") { item, sourceFrame in
+                    pickEmoji(item, fromCell: sourceFrame)
                 }
             }
+            #if os(iOS)
+            // Re-aim any in-flight arc whenever the cursor moves so the
+            // giant emoji's descent tracks the new caret position.
+            .onChange(of: selection.location) { _, _ in
+                retargetActiveFlightIfNeeded()
+            }
+            #endif
             .alert(discardConfirmTitle, isPresented: $showDiscardConfirm) {
                 Button("放弃更改", role: .destructive) {
                     clearDraft()
@@ -433,7 +520,8 @@ struct ComposerView: View {
                            selection: $selection,
                            typingStyle: $typingStyle,
                            focused: $focused,
-                           autoFocusOnAppear: true)
+                           autoFocusOnAppear: true,
+                           handle: editorHandle)
                 .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
             #else
             TextEditor(text: $draft)
