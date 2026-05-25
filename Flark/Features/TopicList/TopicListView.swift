@@ -3,13 +3,22 @@ import FlarkKit
 
 struct TopicListView: View {
     @Environment(AppModel.self) private var model
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var hSize
+    /// True when this is a side-by-side master list (iPad split view).
+    /// On iPhone compact the list disappears the moment the user taps
+    /// through, so we leave the system's selection handling untouched.
+    private var isSplitMaster: Bool { hSize == .regular }
+    #else
+    private var isSplitMaster: Bool { true }
+    #endif
     @Binding var selection: String?
     @State private var composing = false
     @State private var showSpaces = false
     @State private var showIdentity = false
     @State private var editingTopic: EditingTopic? = nil
 
-    private struct EditingTopic: Identifiable {
+    fileprivate struct EditingTopic: Identifiable {
         let id: String
         let body: ContentDocument
     }
@@ -22,36 +31,7 @@ struct TopicListView: View {
                     ContentUnavailableView("还没有话题", systemImage: "bubble.left.and.bubble.right",
                                            description: Text(emptyHint))
                 } else {
-                    // Plain List (no `selection:`) so iPadOS doesn't draw its
-                    // chunky tint-colored selection box around the row. We
-                    // drive selection ourselves via a tap and let `TopicCard`
-                    // render its own subtle highlight when active — matches
-                    // the iOS 26 floating-card aesthetic.
-                    List {
-                        ForEach(topics) { topic in
-                            Button { selection = topic.id } label: {
-                                TopicCard(topic: topic,
-                                          isSelected: selection == topic.id)
-                            }
-                            .buttonStyle(.plain)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                            .listRowBackground(Color.clear)
-                            .reactionPanel(
-                                targetID: topic.id, targetType: .topic,
-                                onEdit: model.canEditTopic(topic.id) ? {
-                                    if let t = model.projection.topics[topic.id] {
-                                        editingTopic = EditingTopic(id: topic.id, body: t.body)
-                                    }
-                                } : nil,
-                                onDelete: model.canDeleteTopic(topic.id) ? {
-                                    if selection == topic.id { selection = nil }
-                                    model.deleteTopic(topic.id)
-                                } : nil)
-                        }
-                    }
-                    .listStyle(.plain)
-                    .refreshable { await model.refresh() }
+                    topicList(topics)
                 }
             }
             // On iOS use the grouped page color so cards stand out against
@@ -109,6 +89,74 @@ struct TopicListView: View {
         "点右下角 + 创建第一个话题"
         #endif
     }
+
+    /// iPad split view: drive selection ourselves via plain `Button` rows
+    /// inside a `List` (no `selection:` binding) so iPadOS doesn't draw its
+    /// chunky tint-colored selection ring. The card's own accent rail is
+    /// the only selection cue.
+    ///
+    /// iPhone compact / macOS: use `List(selection:)` so the system can
+    /// translate selection into a push to the detail column. The selection
+    /// ring isn't visible there (compact width collapses the list away on
+    /// tap), so the standard behavior is fine.
+    @ViewBuilder
+    private func topicList(_ topics: [TopicRow]) -> some View {
+        if isSplitMaster {
+            // Plain List with selection binding (so the parent
+            // NavigationSplitView's detail column updates), but tint the
+            // List with the row background color so the system's
+            // accent-tinted selection ring blends invisibly into the card
+            // surface. The only visible selection cue then is the card's
+            // own accent rail rendered inside `TopicCard`.
+            List(selection: $selection) {
+                ForEach(topics) { topic in
+                    TopicCard(topic: topic,
+                              isSelected: selection == topic.id)
+                        .tag(topic.id)
+                        .applyRowChrome(model: model, topicID: topic.id,
+                                        selection: $selection, editingTopic: $editingTopic)
+                }
+            }
+            .listStyle(.plain)
+            .tint(Color.platformBackground)
+            .refreshable { await model.refresh() }
+        } else {
+            List(selection: $selection) {
+                ForEach(topics) { topic in
+                    TopicCard(topic: topic, isSelected: false)
+                        .tag(topic.id)
+                        .applyRowChrome(model: model, topicID: topic.id,
+                                        selection: $selection, editingTopic: $editingTopic)
+                }
+            }
+            .listStyle(.plain)
+            .refreshable { await model.refresh() }
+        }
+    }
+}
+
+/// Shared row-level modifiers for both the iPad Button-driven list and the
+/// iPhone selection-driven list (separators, insets, swipe-to-react panel).
+private extension View {
+    func applyRowChrome(model: AppModel, topicID: String,
+                        selection: Binding<String?>,
+                        editingTopic: Binding<TopicListView.EditingTopic?>) -> some View {
+        self
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
+            .reactionPanel(
+                targetID: topicID, targetType: .topic,
+                onEdit: model.canEditTopic(topicID) ? {
+                    if let t = model.projection.topics[topicID] {
+                        editingTopic.wrappedValue = TopicListView.EditingTopic(id: topicID, body: t.body)
+                    }
+                } : nil,
+                onDelete: model.canDeleteTopic(topicID) ? {
+                    if selection.wrappedValue == topicID { selection.wrappedValue = nil }
+                    model.deleteTopic(topicID)
+                } : nil)
+    }
 }
 
 struct TopicCard: View {
@@ -151,9 +199,9 @@ struct TopicCard: View {
         .cardSurface()
         .overlay(alignment: .leading) {
             // Slim accent rail on the leading edge when this card is the
-            // active selection in the split view. Subtle on iPhone (where
-            // selection just means the user tapped through), prominent on
-            // iPad where the master list stays visible beside the detail.
+            // active selection in the split view (iPad). On iPhone compact
+            // `isSelected` is always false and the list collapses away on
+            // tap, so the rail is never visible there.
             if isSelected {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(Color.accentColor)
