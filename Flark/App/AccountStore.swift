@@ -55,7 +55,10 @@ enum AccountStore {
     static func keyAccount(_ id: String) -> String { "flark.acct.\(id).key" }
     static func nameAccount(_ id: String) -> String { "flark.acct.\(id).name" }
     static func spacesAccount(_ id: String) -> String { "flark.acct.\(id).spaces" }
-    static func spacePassword(_ id: String, _ spaceID: String) -> String {
-        "flark.acct.\(id).space.\(spaceID).pw"
+    /// Keyed by the Space's per-install `localID` (not its shared spaceID),
+    /// since the password belongs to a specific WebDAV binding — two bindings
+    /// of the same spaceID may legitimately use different credentials.
+    static func spacePassword(_ id: String, _ localID: String) -> String {
+        "flark.acct.\(id).space.\(localID).pw"
     }
 }

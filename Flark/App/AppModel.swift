@@ -26,6 +26,15 @@ final class AppModel {
         manifestURL: Bundle.main.url(forResource: "manifest", withExtension: "json", subdirectory: "Emoji")
             ?? Bundle.main.url(forResource: "manifest", withExtension: "json"))
 
+    /// Per-account local tally that drives the picker's `最常使用` row. Starts
+    /// empty and is rebuilt as the user reacts / inserts emoji. Rebound to a
+    /// new account on login/switch/import/logout.
+    private var emojiUsage = EmojiUsageStore(accountID: "")
+    /// Bumped on every `recordEmojiUsage` so SwiftUI views observing
+    /// `mostUsedEmoji` (Observable tracks reads of this property) re-render
+    /// without us needing to expose the store itself as observable state.
+    private var emojiUsageVersion: Int = 0
+
     private var identity: DeviceIdentity?
     private var clock: HLCClock?
     private var engine: SyncEngine?
@@ -38,8 +47,8 @@ final class AppModel {
 
     var authorID: String { identity?.authorID ?? "" }
 
-    private func spacePwAccount(_ spaceID: String) -> String {
-        AccountStore.spacePassword(currentAccountID ?? "", spaceID)
+    private func spacePwAccount(_ localID: String) -> String {
+        AccountStore.spacePassword(currentAccountID ?? "", localID)
     }
 
     // MARK: - Bootstrap
@@ -67,7 +76,8 @@ final class AppModel {
         let did = DeviceIdentity(privateKey: pk)
         let id = did.authorID
         let name = Keychain.getString(legacyName)
-            ?? UserDefaults.standard.string(forKey: "flark.displayName") ?? "我"
+            ?? UserDefaults.standard.string(forKey: "flark.displayName")
+            ?? String(localized: "我", comment: "Default display name for migrated single-user identity")
         Keychain.set(keyData, account: AccountStore.keyAccount(id), sync: true)
         Keychain.setString(name, account: AccountStore.nameAccount(id), sync: true)
         if let old = Keychain.get(legacySpaces),
@@ -75,7 +85,10 @@ final class AppModel {
             SpaceStore.save(list, account: id)
             for s in list where s.kind == .webdav {
                 if let pw = Keychain.getString("space.\(s.id).password") {
-                    Keychain.setString(pw, account: AccountStore.spacePassword(id, s.id), sync: true)
+                    // Legacy SpaceConfig has localID == id (see the Decodable
+                    // fallback in SpaceConfig), so this routes to the same
+                    // keychain entry the new code reads via cfg.localID.
+                    Keychain.setString(pw, account: AccountStore.spacePassword(id, s.localID), sync: true)
                 }
             }
         }
@@ -92,7 +105,15 @@ final class AppModel {
         currentAccountID = id
         AccountStore.currentID = id
         spaces = SpaceStore.load(account: id)
+        rebindEmojiUsage(to: id)
         return true
+    }
+
+    /// The `最常使用` shortcut is per-account, so swap the store whenever the
+    /// active account changes — login, switch, import, logout.
+    private func rebindEmojiUsage(to accountID: String) {
+        emojiUsage = EmojiUsageStore(accountID: accountID)
+        emojiUsageVersion &+= 1
     }
 
     // MARK: - Identity / accounts
@@ -112,6 +133,7 @@ final class AppModel {
         accounts = AccountStore.accounts()
         currentSpace = nil
         projection = Projection()
+        rebindEmojiUsage(to: id)
         stage = .noSpace
     }
 
@@ -133,7 +155,7 @@ final class AppModel {
     func removeAccount(_ id: String) {
         if let list = try? JSONDecoder().decode(
             [SpaceConfig].self, from: Keychain.get(AccountStore.spacesAccount(id)) ?? Data()) {
-            for s in list { Keychain.delete(AccountStore.spacePassword(id, s.id)) }
+            for s in list { Keychain.delete(AccountStore.spacePassword(id, s.localID)) }
         }
         Keychain.delete(AccountStore.keyAccount(id))
         Keychain.delete(AccountStore.nameAccount(id))
@@ -156,14 +178,17 @@ final class AppModel {
     }
 
     /// `spaceID` lets a user join an existing shared Space (it is the WebDAV
-    /// directory name). Blank → a fresh random Space.
+    /// directory name). Blank → a fresh random Space. A fresh per-install
+    /// `localID` is always generated so the same spaceID can be safely bound
+    /// to a second WebDAV server without colliding with the first binding's
+    /// outbox / snapshot / blob caches.
     func addWebDAVSpace(name: String, url: String, user: String, password: String,
                         spaceID: String = "") {
         let trimmed = spaceID.trimmingCharacters(in: .whitespacesAndNewlines)
         let id = trimmed.isEmpty ? UUID().uuidString : trimmed
         let cfg = SpaceConfig(id: id, name: name, kind: .webdav,
                               webdavURL: url, webdavUser: user)
-        Keychain.setString(password, account: spacePwAccount(cfg.id), sync: true)
+        Keychain.setString(password, account: spacePwAccount(cfg.localID), sync: true)
         spaces.append(cfg); persistSpaces()
         Task { await openSpace(cfg) }
     }
@@ -176,19 +201,19 @@ final class AppModel {
         var blobCache: BlobCache?
         switch cfg.kind {
         case .local:
-            backend = LocalFileBackend(root: SpaceStore.localRoot(for: cfg.id))
+            backend = LocalFileBackend(root: SpaceStore.localRoot(for: cfg.localID))
         case .webdav:
             guard let u = URL(string: cfg.webdavURL ?? "") else { return }
-            let pw = Keychain.getString(spacePwAccount(cfg.id)) ?? ""
+            let pw = Keychain.getString(spacePwAccount(cfg.localID)) ?? ""
             backend = WebDAVBackend(baseURL: u, username: cfg.webdavUser ?? "", password: pw)
-            blobCache = BlobCache(directory: SpaceStore.blobCacheRoot(for: cfg.id))
+            blobCache = BlobCache(directory: SpaceStore.blobCacheRoot(for: cfg.localID))
         }
         let clock = HLCClock(nodeID: identity.authorID)
         let repo = SpaceRepository(backend: backend, identity: identity,
                                    spaceID: cfg.id, deviceID: DeviceID.current,
-                                   outboxRoot: SpaceStore.outboxRoot(for: cfg.id),
+                                   outboxRoot: SpaceStore.outboxRoot(for: cfg.localID),
                                    blobCache: blobCache)
-        let snapshots = SnapshotStore(url: SpaceStore.snapshotURL(for: cfg.id))
+        let snapshots = SnapshotStore(url: SpaceStore.snapshotURL(for: cfg.localID))
         let engine = SyncEngine(repo: repo, clock: clock, identity: identity,
                                 snapshotStore: snapshots)
         self.clock = clock; self.repo = repo; self.engine = engine
@@ -235,6 +260,30 @@ final class AppModel {
         Task { await engine?.shutdown() }
     }
 
+    /// Update an existing Space's mutable fields (name + WebDAV connection
+    /// details). `id`, `localID` and `kind` are immutable — changing those
+    /// is semantically a new join, not an edit. Pass a non-nil `password` to
+    /// overwrite the stored credential; nil keeps it. If the edited Space is
+    /// currently open, reconnect so connection changes take effect — local
+    /// caches survive because they're keyed by `localID`, which doesn't move.
+    func updateSpace(_ cfg: SpaceConfig, password: String? = nil) {
+        guard let idx = spaces.firstIndex(where: { $0.localID == cfg.localID }) else { return }
+        spaces[idx] = cfg
+        persistSpaces()
+        if let pw = password, cfg.kind == .webdav {
+            Keychain.setString(pw, account: spacePwAccount(cfg.localID), sync: true)
+        }
+        if currentSpace?.localID == cfg.localID {
+            Task {
+                await engine?.shutdown()
+                engine = nil; repo = nil; clock = nil
+                projection = Projection()
+                syncStatus = .idle
+                await openSpace(cfg)
+            }
+        }
+    }
+
     func switchSpace(_ cfg: SpaceConfig) {
         Task {
             await engine?.shutdown()
@@ -266,16 +315,16 @@ final class AppModel {
 
             switch cfg.kind {
             case .local:
-                try? FileManager.default.removeItem(at: SpaceStore.localRoot(for: cfg.id))
+                try? FileManager.default.removeItem(at: SpaceStore.localRoot(for: cfg.localID))
             case .webdav:
-                Keychain.delete(spacePwAccount(cfg.id))
+                Keychain.delete(spacePwAccount(cfg.localID))
             }
             // The projection + blob + thumbnail caches + outbox mirror are
             // per-Space regardless of backend kind.
-            try? FileManager.default.removeItem(at: SpaceStore.snapshotURL(for: cfg.id))
-            try? FileManager.default.removeItem(at: SpaceStore.blobCacheRoot(for: cfg.id))
-            try? FileManager.default.removeItem(at: SpaceStore.thumbCacheRoot(for: cfg.id))
-            try? FileManager.default.removeItem(at: SpaceStore.outboxRoot(for: cfg.id))
+            try? FileManager.default.removeItem(at: SpaceStore.snapshotURL(for: cfg.localID))
+            try? FileManager.default.removeItem(at: SpaceStore.blobCacheRoot(for: cfg.localID))
+            try? FileManager.default.removeItem(at: SpaceStore.thumbCacheRoot(for: cfg.localID))
+            try? FileManager.default.removeItem(at: SpaceStore.outboxRoot(for: cfg.localID))
 
             if wasCurrent {
                 if let next = spaces.first {
@@ -315,6 +364,17 @@ final class AppModel {
         emit(.topicDelete(topicID: topicID))
     }
 
+    /// A topic can be edited only by its own author. Unlike delete, edits are
+    /// allowed regardless of replies/reactions — that's the normal expectation.
+    func canEditTopic(_ topicID: String) -> Bool {
+        guard let topic = projection.topics[topicID] else { return false }
+        return topic.authorID == authorID
+    }
+
+    func editTopic(_ topicID: String, body: ContentDocument) {
+        emit(.topicEdit(topicID: topicID, body: body))
+    }
+
     func createReply(topicID: String, body: ContentDocument) {
         emit(.replyCreate(replyID: UUID().uuidString, topicID: topicID, body: body))
     }
@@ -329,9 +389,42 @@ final class AppModel {
         emit(.replyDelete(replyID: replyID))
     }
 
+    func canEditReply(_ replyID: String) -> Bool {
+        guard let reply = projection.replies[replyID] else { return false }
+        return reply.authorID == authorID
+    }
+
+    func editReply(_ replyID: String, body: ContentDocument) {
+        emit(.replyEdit(replyID: replyID, body: body))
+    }
+
     func toggleReaction(targetID: String, type: TargetType, emojiID: String) {
         let active = projection.hasReacted(author: authorID, target: targetID, emoji: emojiID)
         emit(.reactionSet(targetID: targetID, targetType: type, emojiID: emojiID, removed: active))
+    }
+
+    // MARK: - Emoji usage (drives `最常使用`)
+
+    /// Top emoji the user has actually reached for, frequency × recency-decay,
+    /// resolved into catalog items. The manifest's `defaultMostUsed` seeds pad
+    /// the tail so first-launch isn't empty; user picks always rank ahead and
+    /// push the seeds off as real usage accumulates.
+    var mostUsedEmoji: [EmojiItem] {
+        _ = emojiUsageVersion          // observe for SwiftUI invalidation
+        let dynamic = emojiUsage.topIDs(limit: 24)
+        var seen = Set(dynamic)
+        var merged = dynamic
+        for id in emoji.seedMostUsedIDs where !seen.contains(id) {
+            merged.append(id); seen.insert(id)
+        }
+        return merged.prefix(24).compactMap { emoji.item($0) }
+    }
+
+    /// Call from picker / quick-row / composer insertion — anywhere the user
+    /// explicitly chose an emoji. Toggling off a reaction shouldn't count.
+    func recordEmojiUsage(_ emojiID: String) {
+        emojiUsage.record(emojiID)
+        emojiUsageVersion &+= 1
     }
 
     func uploadImage(_ data: Data) async -> (id: String, w: Int, h: Int)? {
@@ -392,8 +485,8 @@ final class AppModel {
     /// The fetch hops to the repo actor; decode/resize/IO run off the main
     /// actor (the helpers below are `nonisolated`) so scrolling stays smooth.
     func loadThumbnail(_ id: String, maxEdge: Int = 900) async -> Data? {
-        guard let spaceID = currentSpace?.id else { return await loadImage(id) }
-        let url = SpaceStore.thumbCacheRoot(for: spaceID)
+        guard let localID = currentSpace?.localID else { return await loadImage(id) }
+        let url = SpaceStore.thumbCacheRoot(for: localID)
             .appendingPathComponent("\(id)@\(maxEdge)")
         if let cached = await Self.readFile(url) { return cached }
         guard let full = await loadImage(id) else { return nil }
@@ -457,6 +550,7 @@ final class AppModel {
         currentSpace = nil
         projection = Projection()
         accounts = AccountStore.accounts()
+        rebindEmojiUsage(to: "")
         stage = accounts.isEmpty ? .onboarding : .accountPicker
     }
 
@@ -467,7 +561,10 @@ final class AppModel {
         guard let identity, !passphrase.isEmpty else { return nil }
         var pw: [String: String] = [:]
         for s in spaces where s.kind == .webdav {
-            pw[s.id] = Keychain.getString(spacePwAccount(s.id)) ?? ""
+            // Keyed by localID — matches `spacePwAccount` and lets the same
+            // spaceID appear twice (one per WebDAV binding) without one
+            // password overwriting the other.
+            pw[s.localID] = Keychain.getString(spacePwAccount(s.localID)) ?? ""
         }
         let portable = PortableIdentity(
             key: identity.privateKey.rawRepresentation.base64EncodedString(),
@@ -494,12 +591,17 @@ final class AppModel {
         AccountStore.upsert(id: acctID, name: p.name)
         AccountStore.currentID = acctID
 
-        for (spaceID, password) in p.passwords {
-            Keychain.setString(password, account: AccountStore.spacePassword(acctID, spaceID), sync: true)
+        // Keys in `p.passwords` are localIDs (new exports) or spaceIDs (legacy
+        // exports where SpaceConfig had no localID). For legacy data the
+        // SpaceConfig decoder falls back to localID == id, so either form ends
+        // up at the right keychain account.
+        for (key, password) in p.passwords {
+            Keychain.setString(password, account: AccountStore.spacePassword(acctID, key), sync: true)
         }
         spaces = p.spaces
         SpaceStore.save(spaces, account: acctID)
         accounts = AccountStore.accounts()
+        rebindEmojiUsage(to: acctID)
 
         Task {
             await engine?.shutdown()

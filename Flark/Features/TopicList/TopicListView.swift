@@ -7,6 +7,28 @@ struct TopicListView: View {
     @State private var composing = false
     @State private var showSpaces = false
     @State private var showIdentity = false
+    @State private var editingTopic: EditingTopic? = nil
+
+    /// True on iPad (regardless of orientation) and macOS — i.e. anywhere
+    /// `NavigationSplitView` keeps the master column visible next to the
+    /// detail. Originally we keyed this off `horizontalSizeClass == .regular`,
+    /// but inside NavigationSplitView's master column iPadOS 26 reports
+    /// `.compact` in portrait (the column itself is narrow), so the iPad
+    /// branch below was dead code on portrait and iPad portrait fell into
+    /// the iPhone `List(selection:)` branch — which is what paints the
+    /// accent-tinted selection ring around the tapped row.
+    private var isSplitMaster: Bool {
+        #if os(iOS)
+        return UIDevice.current.userInterfaceIdiom == .pad
+        #else
+        return true
+        #endif
+    }
+
+    fileprivate struct EditingTopic: Identifiable {
+        let id: String
+        let body: ContentDocument
+    }
 
     var body: some View {
         let topics = model.projection.topicRowsByRecency
@@ -16,23 +38,7 @@ struct TopicListView: View {
                     ContentUnavailableView("还没有话题", systemImage: "bubble.left.and.bubble.right",
                                            description: Text(emptyHint))
                 } else {
-                    List(selection: $selection) {
-                        ForEach(topics) { topic in
-                            TopicCard(topic: topic)
-                                .tag(topic.id)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                                .listRowBackground(Color.clear)
-                                .reactionPanel(
-                                    targetID: topic.id, targetType: .topic,
-                                    onDelete: model.canDeleteTopic(topic.id) ? {
-                                        if selection == topic.id { selection = nil }
-                                        model.deleteTopic(topic.id)
-                                    } : nil)
-                        }
-                    }
-                    .listStyle(.plain)
-                    .refreshable { await model.refresh() }
+                    topicList(topics)
                 }
             }
             // On iOS use the grouped page color so cards stand out against
@@ -75,23 +81,98 @@ struct TopicListView: View {
                 Button { showIdentity = true } label: { Image(systemName: "person.crop.circle") }
             }
         }
-        .sheet(isPresented: $composing) { ComposerView(mode: .topic) }
+        .sheet(isPresented: $composing) { ComposerView(mode: .newTopic) }
         .sheet(isPresented: $showSpaces) { SpaceListView() }
         .sheet(isPresented: $showIdentity) { IdentitySettingsView() }
+        .sheet(item: $editingTopic) { target in
+            ComposerView(mode: .editTopic(topicID: target.id, body: target.body))
+        }
     }
 
-    private var emptyHint: String {
+    private var emptyHint: LocalizedStringKey {
         #if os(macOS)
         "点右上角 + 创建第一个话题（⇧⌘N）"
         #else
         "点右下角 + 创建第一个话题"
         #endif
     }
+
+    /// iPad split view: drive selection ourselves via plain `Button` rows
+    /// inside a `List` (no `selection:` binding) so iPadOS doesn't draw its
+    /// chunky tint-colored selection ring. The card's own accent rail is
+    /// the only selection cue.
+    ///
+    /// iPhone compact / macOS: use `List(selection:)` so the system can
+    /// translate selection into a push to the detail column. The selection
+    /// ring isn't visible there (compact width collapses the list away on
+    /// tap), so the standard behavior is fine.
+    @ViewBuilder
+    private func topicList(_ topics: [TopicRow]) -> some View {
+        if isSplitMaster {
+            // iPad split view: no Button (iPadOS 26 paints a stuck red
+            // active-button ring on plain Buttons inside a List), no List
+            // selection binding. Just an onTapGesture on the card → set
+            // selection ourselves → parent's NavigationSplitView updates
+            // the detail column. The card's own accent rail is the only
+            // selection cue.
+            List {
+                ForEach(topics) { topic in
+                    TopicCard(topic: topic,
+                              isSelected: selection == topic.id)
+                        .contentShape(Rectangle())
+                        .onTapGesture { selection = topic.id }
+                        .applyRowChrome(model: model, topicID: topic.id,
+                                        selection: $selection, editingTopic: $editingTopic)
+                }
+            }
+            .listStyle(.plain)
+            .refreshable { await model.refresh() }
+        } else {
+            // iPhone compact / macOS: keep List(selection:) so SwiftUI can
+            // translate a row tap into a push of the detail. No accent
+            // rail here — the list collapses away on tap anyway.
+            List(selection: $selection) {
+                ForEach(topics) { topic in
+                    TopicCard(topic: topic, isSelected: false)
+                        .tag(topic.id)
+                        .applyRowChrome(model: model, topicID: topic.id,
+                                        selection: $selection, editingTopic: $editingTopic)
+                }
+            }
+            .listStyle(.plain)
+            .refreshable { await model.refresh() }
+        }
+    }
+}
+
+/// Shared row-level modifiers for both the iPad Button-driven list and the
+/// iPhone selection-driven list (separators, insets, swipe-to-react panel).
+private extension View {
+    func applyRowChrome(model: AppModel, topicID: String,
+                        selection: Binding<String?>,
+                        editingTopic: Binding<TopicListView.EditingTopic?>) -> some View {
+        self
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
+            .reactionPanel(
+                targetID: topicID, targetType: .topic,
+                onEdit: model.canEditTopic(topicID) ? {
+                    if let t = model.projection.topics[topicID] {
+                        editingTopic.wrappedValue = TopicListView.EditingTopic(id: topicID, body: t.body)
+                    }
+                } : nil,
+                onDelete: model.canDeleteTopic(topicID) ? {
+                    if selection.wrappedValue == topicID { selection.wrappedValue = nil }
+                    model.deleteTopic(topicID)
+                } : nil)
+    }
 }
 
 struct TopicCard: View {
     @Environment(AppModel.self) private var model
     let topic: TopicRow
+    var isSelected: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -100,15 +181,13 @@ struct TopicCard: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.displayName(for: topic.authorID))
                         .font(.subheadline.weight(.semibold))
-                    Text(EventTime.label(Int64(topic.createdAt)))
+                    timestampLine
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
             }
-            if !topic.preview.isEmpty {
-                Text(renderedPreview)
-                    .font(.body)
-                    .lineLimit(4)
+            if !topic.previewBody.isEmpty {
+                previewText
             }
             if !topic.images.isEmpty {
                 TopicImageRow(images: topic.images)
@@ -128,24 +207,45 @@ struct TopicCard: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
+        .overlay(alignment: .leading) {
+            // Slim accent rail on the leading edge when this card is the
+            // active selection in the split view (iPad). On iPhone compact
+            // `isSelected` is always false and the list collapses away on
+            // tap, so the rail is never visible there.
+            if isSelected {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color.accentColor)
+                    .frame(width: 4)
+                    .padding(.vertical, 12)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.snappy(duration: 0.18), value: isSelected)
         .contentShape(Rectangle())
     }
 
-    /// On macOS, swap `[u_xxx]` emoji-id placeholders left in
-    /// `topic.preview` for their Unicode glyph so the card reads naturally.
-    /// iOS behavior is unchanged.
-    private var renderedPreview: String {
-        #if os(macOS)
-        var out = topic.preview
-        // Bracketed IDs are the only place `[` appears in preview text.
-        while let range = out.range(of: #"\[u_[A-Za-z0-9_]+\]"#, options: .regularExpression) {
-            let id = String(out[range].dropFirst().dropLast())
-            let glyph = model.emoji.item(id)?.unicode ?? "🙂"
-            out.replaceSubrange(range, with: glyph)
+    /// "时间戳" + optional "· 已编辑" suffix as a single Text run.
+    private var timestampLine: Text {
+        let base = Text(EventTime.label(Int64(topic.createdAt)))
+        if topic.editedAt != nil {
+            return base + Text("  ·  已编辑")
         }
-        return out
+        return base
+    }
+
+    /// Same TextKit pipeline as topic detail / editor — emoji attachments
+    /// align to text identically. Truncated to 4 lines via the underlying
+    /// text container's `maximumNumberOfLines`.
+    @ViewBuilder
+    private var previewText: some View {
+        #if canImport(UIKit)
+        AttrInlineText(
+            attributed: attributedInlineText(body: topic.previewBody, catalog: model.emoji),
+            maxLines: 4
+        )
         #else
-        return topic.preview
+        Text(ContentDocument(body: topic.previewBody).plainText(catalog: model.emoji))
+            .font(.body).lineLimit(4)
         #endif
     }
 }

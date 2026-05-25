@@ -2,25 +2,26 @@ import SwiftUI
 
 /// 时间展示策略：近期事件用相对时间（"刚刚"/"5分钟前"），
 /// 较早的事件直接显示日期，避免出现"3个月前""2年前"这类无用的相对描述。
+///
+/// All format templates feed `setLocalizedDateFormatFromTemplate` so the
+/// glyphs ("月" / "日" / "年" vs ", " / ":") and the field order adapt to
+/// the user's locale automatically — no need for separate zh/en formatters.
 enum EventTime {
     private static let timeOnly: DateFormatter = {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "HH:mm"
+        f.setLocalizedDateFormatFromTemplate("Hm")
         return f
     }()
 
-    private static let monthDay: DateFormatter = {
+    private static let monthDayTime: DateFormatter = {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "M月d日 HH:mm"
+        f.setLocalizedDateFormatFromTemplate("MdHm")
         return f
     }()
 
     private static let fullDate: DateFormatter = {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "yyyy年M月d日"
+        f.setLocalizedDateFormatFromTemplate("yMMMd")
         return f
     }()
 
@@ -30,27 +31,24 @@ enum EventTime {
         let interval = now.timeIntervalSince(date)
         let cal = Calendar.current
 
-        // 未来时间或一分钟内
         if interval < 60 {
-            return "刚刚"
+            return String(localized: "刚刚", comment: "Relative time, < 1 minute ago")
         }
-        // 一小时内
         if interval < 3600 {
-            return "\(Int(interval / 60))分钟前"
+            let minutes = Int(interval / 60)
+            return String(localized: "\(minutes) 分钟前",
+                          comment: "Relative time, n minutes ago")
         }
-        // 今天：只显示时分
         if cal.isDateInToday(date) {
             return timeOnly.string(from: date)
         }
-        // 昨天
         if cal.isDateInYesterday(date) {
-            return "昨天 \(timeOnly.string(from: date))"
+            return String(localized: "昨天 \(timeOnly.string(from: date))",
+                          comment: "Yesterday at HH:MM")
         }
-        // 今年内：月日 + 时分
         if cal.isDate(date, equalTo: now, toGranularity: .year) {
-            return monthDay.string(from: date)
+            return monthDayTime.string(from: date)
         }
-        // 更早：完整日期
         return fullDate.string(from: date)
     }
 }

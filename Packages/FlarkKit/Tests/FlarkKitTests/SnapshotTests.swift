@@ -22,7 +22,7 @@ final class SnapshotTests: XCTestCase {
             signed(a, ca, .topicCreate(topicID: "t1",
                                        body: ContentDocument(text: "ship 22:00"))),
             signed(a, ca, .topicCreate(topicID: "t2",
-                                       body: ContentDocument(segments: [.text("food "), .emoji(id: "u_pizza")]))),
+                                       body: ContentDocument(body: "food [u_pizza]"))),
             signed(b, cb, .replyCreate(replyID: "r1", topicID: "t1",
                                        body: ContentDocument(text: "on it"))),
             signed(a, ca, .reactionSet(targetID: "t1", targetType: .topic,

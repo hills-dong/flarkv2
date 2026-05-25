@@ -35,7 +35,7 @@ final class StorageSyncTests: XCTestCase {
 
         // Dong posts a topic with an inline blob; Zhang replies + reacts.
         let blob = try await repoA.putBlob(Data("png-bytes".utf8))
-        let doc = ContentDocument(segments: [.text("ship "), .image(blobID: blob, width: 1, height: 1)])
+        let doc = ContentDocument(body: "ship \n![](blob://\(blob))")
         let t = await engineA.makeEvent(.topicCreate(topicID: "t1", body: doc),
                                         authorID: dong.authorID, publicKey: dong.publicKeyData)
         await engineA.submit(t)

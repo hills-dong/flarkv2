@@ -11,11 +11,17 @@ public struct TopicState: Identifiable, Equatable, Sendable, Codable {
     public var createdAt: Int64        // hlc.wallMillis of creating event
     public var replyCount: Int
     public var lastActivity: Int64
+    /// HLC of the most recent edit (nil if never edited). Stored for LWW so
+    /// out-of-order edit events resolve deterministically.
+    public var editHLC: HLC?
+    /// wallMillis of the most recent edit (mirrors `editHLC` for display).
+    public var editedAt: Int64?
 }
 
 /// Lightweight row for the topic list — excludes the heavy `ContentDocument`
 /// body so the list array is cheap to build, copy and diff at 10k+ topics.
-/// `preview` is a truncated plain-text rendering of the body.
+/// `previewBody` is a truncated markdown body with image tokens hoisted out
+/// into `images`.
 public struct TopicRow: Identifiable, Equatable, Sendable, Codable {
     /// Just the blob ids of a topic's images, in document order. Dimensions
     /// are intentionally omitted — the list renders fixed-size thumbnails.
@@ -25,33 +31,74 @@ public struct TopicRow: Identifiable, Equatable, Sendable, Codable {
 
     public let id: String
     public let authorID: String
-    public let preview: String
+    /// Markdown body for the inline preview, with image tokens removed (they
+    /// render as real thumbnails via `images`). Truncated to a character
+    /// limit so the row map stays small at 10k+ topics. Renderers parse this
+    /// with `MarkdownCodec.parse` so bold/italic/links/emoji all show.
+    public let previewBody: String
     public let createdAt: Int64
     public let replyCount: Int
     public let lastActivity: Int64
+    /// Non-nil when the topic body has been edited at least once. Used by the
+    /// list cell to show a "已编辑" suffix next to the timestamp.
+    public let editedAt: Int64?
     /// Topic images for the list thumbnails. Capped so a single huge gallery
     /// can't bloat the snapshotted row map at 10k+ topics.
     public let images: [Image]
 
     /// Max image thumbnails carried into the list row.
     static let maxRowImages = 9
+    /// Soft character cap for the preview body. Counts markdown chars (so
+    /// emphasis markers count too) — fine because the cap is just a memory
+    /// guard, not a visual-truncation contract.
+    static let previewCharLimit = 200
+
+    /// Regex matching one image token plus optional wrapping newlines on
+    /// either side — captures the blob id in group 1.
+    private static let imageTokenRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"(\n?)!\[[^\]\n]*\]\(blob://([^)\n]+)\)(\n?)"#)
 
     static func make(from t: TopicState) -> TopicRow {
         var imgs: [Image] = []
-        // Preview is text + emoji only — images render as real thumbnails in
-        // the list, so the "[图片]" placeholder from `plainText` is dropped.
-        var preview = ""
-        for seg in t.body.segments {
-            switch seg {
-            case .text(let s): preview += s
-            case .emoji(let id): preview += "[\(id)]"
-            case .image(let blobID, _, _): imgs.append(Image(blobID: blobID))
+        var previewBody = t.body.body
+
+        // Hoist image tokens out of the body. The editor wraps each image
+        // with `\n…\n`; we consume those wrap newlines and replace the whole
+        // run with a single `\n` so the text before and after the hoisted
+        // image stays on its own paragraph (no run-on, no blank line). If
+        // the image was at the very start or end, we drop the whole token
+        // and its wrap newlines.
+        if let re = imageTokenRegex {
+            let ns = previewBody as NSString
+            let originalLength = ns.length
+            let matches = re.matches(in: previewBody,
+                                     range: NSRange(location: 0, length: ns.length))
+            // Collect blobs in document order before splicing.
+            for m in matches {
+                let blobID = ns.substring(with: m.range(at: 2))
+                imgs.append(Image(blobID: blobID))
             }
+            // Splice in reverse so earlier match ranges stay valid.
+            let mutable = NSMutableString(string: previewBody)
+            for m in matches.reversed() {
+                let atStart = m.range.location == 0
+                let atEnd = m.range.location + m.range.length == originalLength
+                let replacement: String = (atStart || atEnd) ? "" : "\n"
+                mutable.replaceCharacters(in: m.range, with: replacement)
+            }
+            previewBody = mutable as String
         }
+
+        if previewBody.count > previewCharLimit {
+            let cut = previewBody.index(previewBody.startIndex, offsetBy: previewCharLimit)
+            previewBody = String(previewBody[..<cut])
+        }
+
         return TopicRow(id: t.id, authorID: t.authorID,
-                        preview: String(preview.prefix(200)),
+                        previewBody: previewBody,
                         createdAt: t.createdAt, replyCount: t.replyCount,
                         lastActivity: t.lastActivity,
+                        editedAt: t.editedAt,
                         images: Array(imgs.prefix(maxRowImages)))
     }
 }
@@ -62,6 +109,8 @@ public struct ReplyState: Identifiable, Equatable, Sendable, Codable {
     public var authorID: String
     public var body: ContentDocument
     public var createdAt: Int64
+    public var editHLC: HLC?
+    public var editedAt: Int64?
 }
 
 public struct ReactionKey: Hashable, Sendable {
@@ -280,6 +329,27 @@ public struct Projection: Sendable {
                 removeReply(replyID)
             }
 
+        case .topicEdit(let topicID, let body):
+            // Author-only. LWW by HLC so out-of-order edits resolve the same
+            // on every device.
+            if var t = topics[topicID], t.authorID == event.authorID {
+                if let prev = t.editHLC, !(event.hlc > prev) { break }
+                t.body = body
+                t.editHLC = event.hlc
+                t.editedAt = event.hlc.wallMillis
+                topics[topicID] = t
+                setRow(.make(from: t))
+            }
+
+        case .replyEdit(let replyID, let body):
+            if var r = replies[replyID], r.authorID == event.authorID {
+                if let prev = r.editHLC, !(event.hlc > prev) { break }
+                r.body = body
+                r.editHLC = event.hlc
+                r.editedAt = event.hlc.wallMillis
+                replies[replyID] = r
+            }
+
         case .reactionSet(let targetID, _, let emojiID, let removed):
             let key = ReactionKey(targetID: targetID, authorID: event.authorID, emojiID: emojiID)
             if let existing = reactions[key], !(event.hlc > existing.hlc) {
@@ -346,7 +416,7 @@ public enum MergeReducer {
     /// Bumped whenever reducer semantics or projected state shape change.
     /// Persisted in a snapshot; a mismatch forces a full rebuild from the
     /// (immutable, always-authoritative) event log.
-    public static let reducerFingerprint = "v4-row-images-no-img-preview"
+    public static let reducerFingerprint = "v8-markdown-body"
 
     /// Fold a batch of events into a projection. Unauthentic events are
     /// dropped. Order-independent: events are globally sorted first.

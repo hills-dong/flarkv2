@@ -1,86 +1,68 @@
 import Foundation
 
-/// Rich-but-simple content model shared by the editor and renderers.
-/// No complex styling — only inline text, emoji and images, in order.
+/// Rich-but-simple content document. The persisted form is a single markdown
+/// body — see `MarkdownCodec` for the grammar (bold/italic/emoji/image/link
+/// plus backslash escapes). Renderers parse the body into `[Run]` on demand;
+/// nothing else about the doc lives on disk.
 public struct ContentDocument: Codable, Equatable, Sendable {
-    public enum Segment: Codable, Equatable, Sendable {
-        case text(String)
-        /// An emoji from the Lark-style catalog, referenced by its manifest id.
-        case emoji(id: String)
-        /// An image stored as a content-addressed blob (sha256 hex).
-        case image(blobID: String, width: Int, height: Int)
+    /// Markdown-flavoured body. May be empty.
+    public var body: String
 
-        private enum Kind: String, Codable { case text, emoji, image }
-        private enum CodingKeys: String, CodingKey { case kind, text, id, blobID, width, height }
-
-        public init(from decoder: Decoder) throws {
-            let c = try decoder.container(keyedBy: CodingKeys.self)
-            switch try c.decode(Kind.self, forKey: .kind) {
-            case .text:
-                self = .text(try c.decode(String.self, forKey: .text))
-            case .emoji:
-                self = .emoji(id: try c.decode(String.self, forKey: .id))
-            case .image:
-                self = .image(
-                    blobID: try c.decode(String.self, forKey: .blobID),
-                    width: try c.decodeIfPresent(Int.self, forKey: .width) ?? 0,
-                    height: try c.decodeIfPresent(Int.self, forKey: .height) ?? 0
-                )
-            }
-        }
-
-        public func encode(to encoder: Encoder) throws {
-            var c = encoder.container(keyedBy: CodingKeys.self)
-            switch self {
-            case .text(let s):
-                try c.encode(Kind.text, forKey: .kind)
-                try c.encode(s, forKey: .text)
-            case .emoji(let id):
-                try c.encode(Kind.emoji, forKey: .kind)
-                try c.encode(id, forKey: .id)
-            case .image(let blobID, let w, let h):
-                try c.encode(Kind.image, forKey: .kind)
-                try c.encode(blobID, forKey: .blobID)
-                try c.encode(w, forKey: .width)
-                try c.encode(h, forKey: .height)
-            }
-        }
+    /// Construct a doc directly from a markdown body. Callers that already
+    /// hold serialized markdown (e.g. the editor after `MarkdownCodec.serialize`)
+    /// use this.
+    public init(body: String = "") {
+        self.body = body
     }
 
-    public var segments: [Segment]
-
-    public init(segments: [Segment] = []) {
-        self.segments = segments
-    }
-
+    /// Construct a doc from a plain (un-escaped) string. Special markdown
+    /// characters get escaped so `ContentDocument(text: "a*b")` round-trips
+    /// to a literal `a*b`, not an italic run.
     public init(text: String) {
-        self.segments = text.isEmpty ? [] : [.text(text)]
+        self.body = MarkdownCodec.escape(text)
     }
 
     public var isEmpty: Bool {
-        segments.allSatisfy {
-            if case .text(let s) = $0 { return s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            return false
-        }
+        body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Plain-text projection used for list previews and accessibility.
+    /// Referenced blob ids (for upload/GC). Cheap regex scan — no catalog
+    /// needed.
+    public var blobIDs: [String] {
+        MarkdownCodec.blobIDs(in: body)
+    }
+
+    /// Plain-text projection used for accessibility / debug logs. Strips
+    /// markdown markers; emojis render as their `[id]` placeholder, images
+    /// as `[图片]`. Pass a catalog via `plainText(catalog:)` for the
+    /// human-friendly `[笑哭]` form.
     public var plainText: String {
-        segments.reduce(into: "") { acc, seg in
-            switch seg {
-            case .text(let s): acc += s
-            case .emoji(let id): acc += "[\(id)]"
-            case .image: acc += "[图片]"
+        // Trivial scan: drop markdown tokens. For now we keep it simple and
+        // route through a catalog-less parse using an empty catalog so emoji
+        // tokens fall back to literal text.
+        plainText(catalog: EmojiCatalog(items: []))
+    }
+
+    public func plainText(catalog: EmojiCatalog) -> String {
+        let runs = MarkdownCodec.parse(body, catalog: catalog)
+        var out = ""
+        for run in runs {
+            switch run {
+            case .text(let s): out += s
+            case .styled(let s, _): out += s
+            case .emoji(let id):
+                if let item = catalog.item(id) { out += item.placeholder }
+                else { out += "[\(id)]" }
+            case .image: out += "[图片]"
+            case .link(let text, _): out += text
             }
         }
+        return out
     }
 
-    /// Referenced blob ids (for upload/gc).
-    public var blobIDs: [String] {
-        segments.compactMap {
-            if case .image(let id, _, _) = $0 { return id }
-            return nil
-        }
+    /// Convenience for callers that want the parsed runs.
+    public func runs(catalog: EmojiCatalog) -> [Run] {
+        MarkdownCodec.parse(body, catalog: catalog)
     }
 
     public func encoded() throws -> Data {

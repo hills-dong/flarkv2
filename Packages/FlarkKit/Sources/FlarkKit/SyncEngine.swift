@@ -1,11 +1,15 @@
 import Foundation
 
 /// What the sync engine is doing right now, for a user-facing status line.
-/// `done`/`total` are event counts; the indicator stays up — with live
-/// progress — until `done == total`. A stalled round keeps the last known
-/// progress and just annotates *why* it stalled (rate-limited vs offline).
-/// No retry countdown: pulls only happen when the user explicitly refreshes,
-/// so there is no automatic next-round to count down to.
+/// `done`/`total` are file counts (event-file segments in the space listing);
+/// the indicator stays up — with live progress — until `done == total`. A
+/// stalled round keeps the last known progress and just annotates *why* it
+/// stalled (rate-limited vs offline). No retry countdown: pulls only happen
+/// when the user explicitly refreshes, so there is no automatic next-round
+/// to count down to. We report files rather than events because file counts
+/// are exact, whereas event counts inside un-fetched files would have to be
+/// estimated (a per-file rotation cap multiplied out badly overstates totals
+/// — most segments aren't full).
 public enum SyncActivity: Equatable, Sendable {
     case idle                                   // fully caught up
     case syncing(done: Int, total: Int)         // actively pulling/folding
@@ -304,13 +308,15 @@ public actor SyncEngine {
             pathEtags = pathEtags.filter { liveSet.contains($0.key) }
             if pathEtags.count != before { snapshotDirty = true }
         }
-        // Persistent progress: events folded so far vs an estimate of the
-        // whole space (one rotation-cap of events per as-yet-unfetched file).
-        let leftover = (totalNew - newAll.count) * SpaceRepository.rotationEventCount
-        let done = p.appliedEventIDs.count
-        let total = done + leftover
+        // Progress is in *files*, not events. We can't see inside an unfetched
+        // segment to know how many events it holds, and the rotation cap is a
+        // worst-case (most segments aren't full), so per-event totals would
+        // overshoot wildly. File counts come straight from the listing.
+        let pendingFiles = totalNew - newAll.count
+        let total = entries.count
+        let done = max(0, total - pendingFiles)
         lastProgress = (done, total)
-        let complete = leftover == 0 && !hasUnsyncedHistory
+        let complete = pendingFiles == 0 && !hasUnsyncedHistory
         publishActivity(complete ? .idle : .syncing(done: done, total: total))
         let roundMs = Int(Date().timeIntervalSince(roundStart) * 1000)
         FlarkLog.shared.record(

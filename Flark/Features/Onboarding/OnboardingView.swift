@@ -14,7 +14,7 @@ struct OnboardingView: View {
                 .padding(.bottom, 22)
 
             Text("欢迎使用 Flark").font(.largeTitle.weight(.bold))
-            Text("无中央服务器的话题群。先创建一个本地身份——它属于你的设备，用密钥签名，无需密码注册。")
+            Text("无服务器的话题群。先在本机创建一个身份，无需注册。")
                 .foregroundStyle(.secondary)
                 .padding(.top, 8)
 

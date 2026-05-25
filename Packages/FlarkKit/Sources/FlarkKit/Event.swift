@@ -12,15 +12,20 @@ public struct Event: Codable, Equatable, Sendable {
         /// is the topic's author; the UI further restricts this to topics with
         /// no interactions (no replies, no reactions).
         case topicDelete(topicID: String)
+        /// Edit a topic's body. Honored only when the editing author owns the
+        /// topic. LWW by event HLC inside the reducer.
+        case topicEdit(topicID: String, body: ContentDocument)
         case replyCreate(replyID: String, topicID: String, body: ContentDocument)
         /// Delete a reply. Honored by the reducer only when the deleting
         /// author is the reply's own author.
         case replyDelete(replyID: String)
+        /// Edit a reply's body. Author-only, LWW by HLC.
+        case replyEdit(replyID: String, body: ContentDocument)
         /// Set (add/remove unified) — one author toggling one emoji on one target.
         case reactionSet(targetID: String, targetType: TargetType, emojiID: String, removed: Bool)
         case profileUpdate(displayName: String, avatarBlobID: String?)
 
-        private enum Kind: String, Codable { case topicCreate, topicDelete, replyCreate, replyDelete, reactionSet, profileUpdate }
+        private enum Kind: String, Codable { case topicCreate, topicDelete, topicEdit, replyCreate, replyDelete, replyEdit, reactionSet, profileUpdate }
         private enum K: String, CodingKey {
             case kind, topicID, replyID, body, targetID, targetType, emojiID, removed, displayName, avatarBlobID
         }
@@ -33,12 +38,18 @@ public struct Event: Codable, Equatable, Sendable {
                                     body: try c.decode(ContentDocument.self, forKey: .body))
             case .topicDelete:
                 self = .topicDelete(topicID: try c.decode(String.self, forKey: .topicID))
+            case .topicEdit:
+                self = .topicEdit(topicID: try c.decode(String.self, forKey: .topicID),
+                                  body: try c.decode(ContentDocument.self, forKey: .body))
             case .replyCreate:
                 self = .replyCreate(replyID: try c.decode(String.self, forKey: .replyID),
                                     topicID: try c.decode(String.self, forKey: .topicID),
                                     body: try c.decode(ContentDocument.self, forKey: .body))
             case .replyDelete:
                 self = .replyDelete(replyID: try c.decode(String.self, forKey: .replyID))
+            case .replyEdit:
+                self = .replyEdit(replyID: try c.decode(String.self, forKey: .replyID),
+                                  body: try c.decode(ContentDocument.self, forKey: .body))
             case .reactionSet:
                 self = .reactionSet(targetID: try c.decode(String.self, forKey: .targetID),
                                     targetType: try c.decode(TargetType.self, forKey: .targetType),
@@ -60,6 +71,10 @@ public struct Event: Codable, Equatable, Sendable {
             case .topicDelete(let id):
                 try c.encode(Kind.topicDelete, forKey: .kind)
                 try c.encode(id, forKey: .topicID)
+            case .topicEdit(let id, let body):
+                try c.encode(Kind.topicEdit, forKey: .kind)
+                try c.encode(id, forKey: .topicID)
+                try c.encode(body, forKey: .body)
             case .replyCreate(let rid, let tid, let body):
                 try c.encode(Kind.replyCreate, forKey: .kind)
                 try c.encode(rid, forKey: .replyID)
@@ -68,6 +83,10 @@ public struct Event: Codable, Equatable, Sendable {
             case .replyDelete(let rid):
                 try c.encode(Kind.replyDelete, forKey: .kind)
                 try c.encode(rid, forKey: .replyID)
+            case .replyEdit(let rid, let body):
+                try c.encode(Kind.replyEdit, forKey: .kind)
+                try c.encode(rid, forKey: .replyID)
+                try c.encode(body, forKey: .body)
             case .reactionSet(let tid, let tt, let emoji, let removed):
                 try c.encode(Kind.reactionSet, forKey: .kind)
                 try c.encode(tid, forKey: .targetID)
