@@ -3,20 +3,27 @@ import FlarkKit
 
 struct TopicListView: View {
     @Environment(AppModel.self) private var model
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var hSize
-    /// True when this is a side-by-side master list (iPad split view).
-    /// On iPhone compact the list disappears the moment the user taps
-    /// through, so we leave the system's selection handling untouched.
-    private var isSplitMaster: Bool { hSize == .regular }
-    #else
-    private var isSplitMaster: Bool { true }
-    #endif
     @Binding var selection: String?
     @State private var composing = false
     @State private var showSpaces = false
     @State private var showIdentity = false
     @State private var editingTopic: EditingTopic? = nil
+
+    /// True on iPad (regardless of orientation) and macOS — i.e. anywhere
+    /// `NavigationSplitView` keeps the master column visible next to the
+    /// detail. Originally we keyed this off `horizontalSizeClass == .regular`,
+    /// but inside NavigationSplitView's master column iPadOS 26 reports
+    /// `.compact` in portrait (the column itself is narrow), so the iPad
+    /// branch below was dead code on portrait and iPad portrait fell into
+    /// the iPhone `List(selection:)` branch — which is what paints the
+    /// accent-tinted selection ring around the tapped row.
+    private var isSplitMaster: Bool {
+        #if os(iOS)
+        return UIDevice.current.userInterfaceIdiom == .pad
+        #else
+        return true
+        #endif
+    }
 
     fileprivate struct EditingTopic: Identifiable {
         let id: String
