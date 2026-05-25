@@ -22,24 +22,32 @@ struct TopicListView: View {
                     ContentUnavailableView("还没有话题", systemImage: "bubble.left.and.bubble.right",
                                            description: Text(emptyHint))
                 } else {
-                    List(selection: $selection) {
+                    // Plain List (no `selection:`) so iPadOS doesn't draw its
+                    // chunky tint-colored selection box around the row. We
+                    // drive selection ourselves via a tap and let `TopicCard`
+                    // render its own subtle highlight when active — matches
+                    // the iOS 26 floating-card aesthetic.
+                    List {
                         ForEach(topics) { topic in
-                            TopicCard(topic: topic)
-                                .tag(topic.id)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                                .listRowBackground(Color.clear)
-                                .reactionPanel(
-                                    targetID: topic.id, targetType: .topic,
-                                    onEdit: model.canEditTopic(topic.id) ? {
-                                        if let t = model.projection.topics[topic.id] {
-                                            editingTopic = EditingTopic(id: topic.id, body: t.body)
-                                        }
-                                    } : nil,
-                                    onDelete: model.canDeleteTopic(topic.id) ? {
-                                        if selection == topic.id { selection = nil }
-                                        model.deleteTopic(topic.id)
-                                    } : nil)
+                            Button { selection = topic.id } label: {
+                                TopicCard(topic: topic,
+                                          isSelected: selection == topic.id)
+                            }
+                            .buttonStyle(.plain)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            .listRowBackground(Color.clear)
+                            .reactionPanel(
+                                targetID: topic.id, targetType: .topic,
+                                onEdit: model.canEditTopic(topic.id) ? {
+                                    if let t = model.projection.topics[topic.id] {
+                                        editingTopic = EditingTopic(id: topic.id, body: t.body)
+                                    }
+                                } : nil,
+                                onDelete: model.canDeleteTopic(topic.id) ? {
+                                    if selection == topic.id { selection = nil }
+                                    model.deleteTopic(topic.id)
+                                } : nil)
                         }
                     }
                     .listStyle(.plain)
@@ -106,6 +114,7 @@ struct TopicListView: View {
 struct TopicCard: View {
     @Environment(AppModel.self) private var model
     let topic: TopicRow
+    var isSelected: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -140,6 +149,20 @@ struct TopicCard: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
+        .overlay(alignment: .leading) {
+            // Slim accent rail on the leading edge when this card is the
+            // active selection in the split view. Subtle on iPhone (where
+            // selection just means the user tapped through), prominent on
+            // iPad where the master list stays visible beside the detail.
+            if isSelected {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color.accentColor)
+                    .frame(width: 4)
+                    .padding(.vertical, 12)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.snappy(duration: 0.18), value: isSelected)
         .contentShape(Rectangle())
     }
 
