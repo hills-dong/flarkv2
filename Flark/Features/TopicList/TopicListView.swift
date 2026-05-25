@@ -102,25 +102,28 @@ struct TopicListView: View {
     @ViewBuilder
     private func topicList(_ topics: [TopicRow]) -> some View {
         if isSplitMaster {
-            // Plain List with selection binding (so the parent
-            // NavigationSplitView's detail column updates), but tint the
-            // List with the row background color so the system's
-            // accent-tinted selection ring blends invisibly into the card
-            // surface. The only visible selection cue then is the card's
-            // own accent rail rendered inside `TopicCard`.
-            List(selection: $selection) {
+            // iPad split view: no Button (iPadOS 26 paints a stuck red
+            // active-button ring on plain Buttons inside a List), no List
+            // selection binding. Just an onTapGesture on the card → set
+            // selection ourselves → parent's NavigationSplitView updates
+            // the detail column. The card's own accent rail is the only
+            // selection cue.
+            List {
                 ForEach(topics) { topic in
                     TopicCard(topic: topic,
                               isSelected: selection == topic.id)
-                        .tag(topic.id)
+                        .contentShape(Rectangle())
+                        .onTapGesture { selection = topic.id }
                         .applyRowChrome(model: model, topicID: topic.id,
                                         selection: $selection, editingTopic: $editingTopic)
                 }
             }
             .listStyle(.plain)
-            .tint(Color.platformBackground)
             .refreshable { await model.refresh() }
         } else {
+            // iPhone compact / macOS: keep List(selection:) so SwiftUI can
+            // translate a row tap into a push of the detail. No accent
+            // rail here — the list collapses away on tap anyway.
             List(selection: $selection) {
                 ForEach(topics) { topic in
                     TopicCard(topic: topic, isSelected: false)
