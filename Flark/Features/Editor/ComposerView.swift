@@ -229,7 +229,8 @@ struct ComposerView: View {
     /// cursor's current position is, so the visual landing point and
     /// the actual text-insertion position stay in sync.
     private func pickEmoji(_ item: EmojiItem, fromCell sourceFrame: CGRect) {
-        guard let tv = editorHandle.textView,
+        guard EmojiPackResolver.flightEnabled,
+              let tv = editorHandle.textView,
               let window = EmojiPickerFlight.keyWindow
         else {
             insertEmoji(item)

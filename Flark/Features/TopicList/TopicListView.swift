@@ -7,6 +7,7 @@ struct TopicListView: View {
     @State private var composing = false
     @State private var showSpaces = false
     @State private var showIdentity = false
+    @State private var showEmojiSettings = false
     @State private var editingTopic: EditingTopic? = nil
 
     /// True on iPad (regardless of orientation) and macOS — i.e. anywhere
@@ -78,12 +79,17 @@ struct TopicListView: View {
                 Button { showSpaces = true } label: { Image(systemName: "rectangle.stack") }
             }
             ToolbarItem(placement: .primaryAction) {
+                Button { showEmojiSettings = true } label: { Image(systemName: "face.smiling") }
+                    .help("表情设置")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button { showIdentity = true } label: { Image(systemName: "person.crop.circle") }
             }
         }
         .sheet(isPresented: $composing) { ComposerView(mode: .newTopic) }
         .sheet(isPresented: $showSpaces) { SpaceListView() }
         .sheet(isPresented: $showIdentity) { IdentitySettingsView() }
+        .sheet(isPresented: $showEmojiSettings) { EmojiSettingsView() }
         .sheet(item: $editingTopic) { target in
             ComposerView(mode: .editTopic(topicID: target.id, body: target.body))
         }

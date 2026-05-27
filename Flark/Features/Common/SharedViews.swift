@@ -35,9 +35,10 @@ struct AvatarView: View {
 func loadEmojiImage(_ file: String?, sizedTo target: CGFloat? = nil,
                     hPadding: CGFloat = 0) -> Image? {
     guard let file else { return nil }
-    let cacheKey = "\(file)@\(target ?? -1)+\(hPadding)"
+    let resolved = EmojiPackResolver.resolvedFile(file)
+    let cacheKey = "\(resolved)@\(target ?? -1)+\(hPadding)"
     if let cached = emojiImageCache[cacheKey] { return cached }
-    guard let url = Bundle.main.url(forResource: file, withExtension: nil, subdirectory: "Emoji"),
+    guard let url = Bundle.main.url(forResource: resolved, withExtension: nil, subdirectory: "Emoji"),
           let data = try? Data(contentsOf: url) else { return nil }
 
     let img: Image?
@@ -274,6 +275,10 @@ private final class PassthroughTextView: UITextView {
 struct EmojiGlyph: View {
     let item: EmojiItem?
     var size: CGFloat = 22
+    /// Observed so a pack switch from Settings re-renders every visible
+    /// glyph; the value itself is read inside `loadEmojiImage` via
+    /// `EmojiPackResolver`, but SwiftUI needs a dependency to invalidate.
+    @AppStorage(AppSettingsKeys.emojiPack) private var emojiPack: String = EmojiPack.lark.rawValue
 
     var body: some View {
         Group {
@@ -284,6 +289,7 @@ struct EmojiGlyph: View {
             }
         }
         .frame(width: size, height: size)
+        .id(emojiPack)
     }
 
     @ViewBuilder private var missing: some View {
@@ -504,6 +510,9 @@ struct ContentDocumentView: View {
     /// first time they're seen this launch. List previews leave this nil.
     var emojiFlyInSpace: String? = nil
     @Environment(AppModel.self) private var model
+    /// Rebuild the inline NSAttributedString (which bakes in emoji
+    /// NSTextAttachment images) whenever the user switches packs.
+    @AppStorage(AppSettingsKeys.emojiPack) private var emojiPack: String = EmojiPack.lark.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -511,6 +520,7 @@ struct ContentDocumentView: View {
                 blockView(block)
             }
         }
+        .id(emojiPack)
     }
 
     @ViewBuilder

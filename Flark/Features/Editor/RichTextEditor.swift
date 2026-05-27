@@ -240,7 +240,8 @@ func emojiAttachmentString(item: EmojiItem,
     // emoji don't crowd the sticker. Matches the inline-render value in
     // SharedViews. Not scaled with the emoji — it's a text-side gap.
     let hPadding: CGFloat = 2
-    if let url = Bundle.main.url(forResource: item.file, withExtension: nil, subdirectory: "Emoji"),
+    let resolved = EmojiPackResolver.resolvedFile(item.file)
+    if let url = Bundle.main.url(forResource: resolved, withExtension: nil, subdirectory: "Emoji"),
        let data = try? Data(contentsOf: url),
        let img = UIImage(data: data) {
         let canvas = CGSize(width: size + hPadding * 2, height: size)

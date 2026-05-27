@@ -594,8 +594,9 @@ final class EmojiPickerFlight: NSObject {
                     landingGlyphSize: CGFloat,
                     in window: UIWindow,
                     onLanded: @escaping () -> Void = {}) -> EmojiPickerFlight? {
+        let resolved = EmojiPackResolver.resolvedFile(item.file)
         guard
-            let url = Bundle.main.url(forResource: item.file,
+            let url = Bundle.main.url(forResource: resolved,
                                       withExtension: nil,
                                       subdirectory: "Emoji"),
             let data = try? Data(contentsOf: url),

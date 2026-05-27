@@ -129,12 +129,14 @@ struct ReactionActionPanel: View {
                                fromSource sourceFrame: CGRect) {
         model.recordEmojiUsage(emojiID)
 
-        guard let host = flightHost,
+        guard EmojiPackResolver.flightEnabled,
+              let host = flightHost,
               let window = EmojiPickerFlight.keyWindow,
               let item = model.emoji.item(emojiID),
               sourceFrame.width > 0, sourceFrame.height > 0
         else {
-            // No animation context — commit immediately.
+            // No animation context (or flight disabled in settings) —
+            // commit immediately.
             model.toggleReaction(targetID: targetID, type: targetType,
                                  emojiID: emojiID)
             return
