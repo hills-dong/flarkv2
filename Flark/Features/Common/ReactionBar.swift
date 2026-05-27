@@ -32,11 +32,10 @@ struct ReactionBar: View {
                 } label: {
                     HStack(spacing: 6) {
                         glyph(for: tally.emojiID)
-                        if tally.count > 1 {
-                            Text("\(tally.count)")
-                                .font(.body)
-                                .foregroundStyle(Color.secondary)
-                        }
+                        Text(nameLabel(for: tally))
+                            .font(.caption)
+                            .foregroundStyle(Color.secondary)
+                            .lineLimit(1)
                     }
                     .padding(.horizontal, 6).padding(.vertical, 3)
                     .background(Color.secondary.opacity(0.12), in: Capsule())
@@ -45,6 +44,19 @@ struct ReactionBar: View {
             }
         }
         .background { tailAnchor }
+    }
+
+    /// Chip text — always shows up to three display names, comma-separated.
+    /// Counts above three append " +n" with the remainder so the bar stays
+    /// compact while still hinting at the full crowd.
+    private func nameLabel(for tally: EmojiTally) -> String {
+        let shown = 3
+        let names = tally.authorIDs.prefix(shown).map { model.displayName(for: $0) }
+        let joined = names.joined(separator: ", ")
+        if tally.count > shown {
+            return "\(joined) +\(tally.count - shown)"
+        }
+        return joined
     }
 
     /// Invisible GeometryReader on the whole bar — registers the bar's
