@@ -61,6 +61,24 @@ struct TopicListView: View {
             .padding(24)
             #endif
         }
+        #if os(iOS)
+        // Edge-swipe from the left to open the space switcher — the same
+        // sheet the `rectangle.stack` toolbar button presents. Filtered to
+        // gestures that start within 24pt of this view's leading edge and
+        // are mostly horizontal, so it doesn't fight List's vertical scroll.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    let startedFromEdge = value.startLocation.x < 24
+                    let movedRightEnough = value.translation.width > 60
+                    let mostlyHorizontal =
+                        abs(value.translation.width) > abs(value.translation.height)
+                    if startedFromEdge && movedRightEnough && mostlyHorizontal {
+                        showSpaces = true
+                    }
+                }
+        )
+        #endif
         .navigationTitle(model.currentSpace?.name ?? "话题")
         .toolbar {
             #if os(macOS)
