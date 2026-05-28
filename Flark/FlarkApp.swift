@@ -66,14 +66,26 @@ struct RootView: View {
     }
 }
 
-/// Adaptive shell: a split view on iPad/Mac (list ‖ detail); on iPhone it
-/// automatically collapses into a push-navigation stack.
+/// Three-column adaptive shell, matching the Mail / Notes pattern:
+/// Spaces ‖ Topics ‖ Topic detail.
+///
+/// On iPad/Mac all three columns can be visible side-by-side. On iPhone
+/// (compact width) NavigationSplitView collapses into a push stack —
+/// the leading-edge back swipe is the system gesture that reveals the
+/// Spaces column, so we don't need a custom drawer.
 struct TopicShell: View {
     @Environment(AppModel.self) private var model
     @State private var selection: String?
+    /// On iPhone compact width this controls which column is currently
+    /// on screen. Default `.content` so launches land on the topic list,
+    /// not the Spaces picker.
+    @State private var compactColumn: NavigationSplitViewColumn = .content
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(preferredCompactColumn: $compactColumn) {
+            SpaceListView(onSelect: { compactColumn = .content })
+                .navigationSplitViewColumnWidth(min: 260, ideal: 300)
+        } content: {
             TopicListView(selection: $selection)
                 .navigationSplitViewColumnWidth(min: 320, ideal: 380)
         } detail: {

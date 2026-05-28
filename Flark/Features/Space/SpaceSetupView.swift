@@ -13,48 +13,69 @@ struct SpaceSetupView: View {
     @State private var password = ""
     @State private var spaceId = ""
 
+    /// Used to bracket the form with a card surface on iPad/Mac so it
+    /// doesn't float against the bare grouped background.
+    private var isWide: Bool {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .pad
+        #else
+        true
+        #endif
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("连接话题群").font(.title.weight(.bold))
-                Text("一个目录就是一个群。同目录的成员共享话题，无需服务器。")
-                    .foregroundStyle(.secondary)
-
-                Picker("", selection: $kind) {
-                    Text("WebDAV").tag(SpaceConfig.Kind.webdav)
-                    Text("本地").tag(SpaceConfig.Kind.local)
-                }
-                .pickerStyle(.segmented)
-
-                field("名称", text: $name, prompt: Text("如：日常 / 想法 / 小组"))
-
-                if kind == .webdav {
-                    // `Text(verbatim:)` so the URL-shaped placeholder isn't
-                    // auto-linkified by LocalizedStringKey markdown parsing
-                    // (which would render it blue instead of placeholder gray).
-                    field("WebDAV 地址", text: $url,
-                          prompt: Text(verbatim: "https://dav.example.com/flark/"))
-                    field("账号", text: $user, prompt: Text("用户名"))
-                    secureField("密码", text: $password)
-                    field("群 ID（可选）", text: $spaceId,
-                          prompt: Text("加入已有群填群 ID；留空则新建"))
-                    Text("凭据仅存本机钥匙串。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                } else {
-                    Text("将在本机创建群目录，之后可在设置里改为 WebDAV。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-
-                connectButton
-                    .padding(.top, 6)
+        GeometryReader { proxy in
+            ScrollView {
+                formContent
+                    .padding(isWide ? 32 : 24)
+                    .frame(maxWidth: isWide ? 540 : 560, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    // On iPad/Mac center the form vertically so it doesn't
+                    // cling to the top with a tall empty void below. On
+                    // phone we want the natural top-aligned scroll.
+                    .frame(minHeight: isWide ? proxy.size.height : 0,
+                           alignment: isWide ? .center : .top)
             }
-            .padding(24)
-            .frame(maxWidth: 560)
-            #if os(macOS)
-            .frame(maxWidth: .infinity)  // center the 560pt form in the window
-            #endif
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .background(Color.platformGrouped)
+        .background(Color.platformGrouped.ignoresSafeArea())
+    }
+
+    @ViewBuilder private var formContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("连接话题群").font(.title.weight(.bold))
+            Text("一个目录就是一个群。同目录的成员共享话题，无需服务器。")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Picker("", selection: $kind) {
+                Text("WebDAV").tag(SpaceConfig.Kind.webdav)
+                Text("本地").tag(SpaceConfig.Kind.local)
+            }
+            .pickerStyle(.segmented)
+
+            field("名称", text: $name, prompt: Text("如：日常 / 想法 / 小组"))
+
+            if kind == .webdav {
+                // `Text(verbatim:)` so the URL-shaped placeholder isn't
+                // auto-linkified by LocalizedStringKey markdown parsing
+                // (which would render it blue instead of placeholder gray).
+                field("WebDAV 地址", text: $url,
+                      prompt: Text(verbatim: "https://dav.example.com/flark/"))
+                field("账号", text: $user, prompt: Text("用户名"))
+                secureField("密码", text: $password)
+                field("群 ID（可选）", text: $spaceId,
+                      prompt: Text("加入已有群填群 ID；留空则新建"))
+                Text("凭据仅存本机钥匙串。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Text("将在本机创建群目录，之后可在设置里改为 WebDAV。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+
+            connectButton
+                .padding(.top, 6)
+        }
     }
 
     @ViewBuilder private var connectButton: some View {
@@ -253,10 +274,15 @@ private struct FieldOutlineMac: ViewModifier {
     }
 }
 
-/// Switch between / add Spaces.
+/// Switch between / add Spaces. Lives as the leading column of the app's
+/// 3-column NavigationSplitView (Spaces ‖ Topics ‖ Detail).
 struct SpaceListView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
+    /// Fired after the user picks a Space (or creates one). The shell uses
+    /// this to advance `preferredCompactColumn` to `.content` on iPhone
+    /// compact width so the user lands on the topic list, not stuck on
+    /// the Spaces column.
+    var onSelect: (() -> Void)? = nil
     @State private var adding = false
     @State private var editing: SpaceConfig?
     @State private var pendingDelete: SpaceConfig?
@@ -286,7 +312,12 @@ struct SpaceListView: View {
                 }
             }
             .sheet(isPresented: $adding) {
-                SpaceSetupView { adding = false; dismiss() }
+                SpaceSetupView {
+                    adding = false
+                    // A newly-connected Space becomes current, so advance
+                    // to the topic list on iPhone compact width.
+                    onSelect?()
+                }
             }
             .sheet(item: $editing) { space in
                 SpaceEditView(space: space)
@@ -320,7 +351,8 @@ struct SpaceListView: View {
     @ViewBuilder private func row(for space: SpaceConfig) -> some View {
         HStack(spacing: 0) {
             Button {
-                model.switchSpace(space); dismiss()
+                model.switchSpace(space)
+                onSelect?()
             } label: {
                 HStack {
                     Image(systemName: space.kind == .webdav ? "cloud" : "folder")

@@ -3,12 +3,25 @@ import FlarkKit
 
 struct TopicListView: View {
     @Environment(AppModel.self) private var model
+    /// Invoked when the user taps the leading topic-group icon on iPhone.
+    /// The shell uses this to flip `preferredCompactColumn` back to
+    /// `.sidebar` — `dismiss()` from inside a NavigationSplitView content
+    /// column does not reliably do that, hence an explicit callback.
+    var onShowSpaces: (() -> Void)? = nil
     @Binding var selection: String?
     @State private var composing = false
-    @State private var showSpaces = false
     @State private var showIdentity = false
     @State private var showEmojiSettings = false
     @State private var editingTopic: EditingTopic? = nil
+
+    /// iPhone only — on iPad the Spaces column is visible alongside, so the
+    /// custom "back to spaces" button would be redundant (and `dismiss` from
+    /// the content column is a no-op when nothing is pushed).
+    #if os(iOS)
+    private var isPhone: Bool {
+        UIDevice.current.userInterfaceIdiom == .phone
+    }
+    #endif
 
     /// True on iPad (regardless of orientation) and macOS — i.e. anywhere
     /// `NavigationSplitView` keeps the master column visible next to the
@@ -61,25 +74,13 @@ struct TopicListView: View {
             .padding(24)
             #endif
         }
-        #if os(iOS)
-        // Edge-swipe from the left to open the space switcher — the same
-        // sheet the `rectangle.stack` toolbar button presents. Filtered to
-        // gestures that start within 24pt of this view's leading edge and
-        // are mostly horizontal, so it doesn't fight List's vertical scroll.
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 20)
-                .onEnded { value in
-                    let startedFromEdge = value.startLocation.x < 24
-                    let movedRightEnough = value.translation.width > 60
-                    let mostlyHorizontal =
-                        abs(value.translation.width) > abs(value.translation.height)
-                    if startedFromEdge && movedRightEnough && mostlyHorizontal {
-                        showSpaces = true
-                    }
-                }
-        )
-        #endif
         .navigationTitle(model.currentSpace?.name ?? "话题")
+        #if os(iOS)
+        // Swap the default chevron for the topic-group icon. The behavior
+        // (pop back to the Spaces column) is unchanged — `dismiss()` is what
+        // the system chevron would call.
+        .navigationBarBackButtonHidden(isPhone)
+        #endif
         .toolbar {
             #if os(macOS)
             ToolbarItem(placement: .navigation) {
@@ -93,13 +94,18 @@ struct TopicListView: View {
                     .keyboardShortcut("n", modifiers: [.command, .shift])
             }
             #else
+            if isPhone {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "rectangle.stack")
+                    }
+                    .accessibilityLabel("话题群")
+                }
+            }
             ToolbarItem(placement: .topBarLeading) {
                 SyncStatusBar(status: model.syncStatus)
             }
             #endif
-            ToolbarItem(placement: .primaryAction) {
-                Button { showSpaces = true } label: { Image(systemName: "rectangle.stack") }
-            }
             ToolbarItem(placement: .primaryAction) {
                 Button { showEmojiSettings = true } label: { Image(systemName: "face.smiling") }
                     .help("表情设置")
@@ -109,7 +115,6 @@ struct TopicListView: View {
             }
         }
         .sheet(isPresented: $composing) { ComposerView(mode: .newTopic) }
-        .sheet(isPresented: $showSpaces) { SpaceListView() }
         .sheet(isPresented: $showIdentity) { IdentitySettingsView() }
         .sheet(isPresented: $showEmojiSettings) { EmojiSettingsView() }
         .sheet(item: $editingTopic) { target in

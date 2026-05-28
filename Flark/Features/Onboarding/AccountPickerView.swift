@@ -48,23 +48,12 @@ struct AccountPickerView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.accentColor.gradient)
-                .frame(width: 64, height: 64)
-                .overlay(
-                    Text("F").font(.system(size: 32, weight: .black))
-                        .foregroundStyle(.white)
-                )
-                .shadow(color: Color.accentColor.opacity(0.25), radius: 14, y: 6)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("选择身份").font(.largeTitle.weight(.bold))
-                Text("点按以切换身份。登出不会删除任何数据。")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        VStack(alignment: .leading, spacing: 6) {
+            Text("选择身份").font(.largeTitle.weight(.bold))
+            Text("点按以切换身份。登出不会删除任何数据。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
