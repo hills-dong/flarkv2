@@ -191,6 +191,7 @@ struct TopicListView: View {
                 }
             }
             .listStyle(.plain)
+            .silentPullToRefresh { await model.refresh() }
         } else {
             // iPhone compact / macOS: keep List(selection:) so SwiftUI can
             // translate a row tap into a push of the detail. No accent
@@ -205,6 +206,45 @@ struct TopicListView: View {
             }
             .listStyle(.plain)
         }
+    }
+}
+
+/// Pull-down-to-refresh without painting the system's progress wheel between
+/// the toolbar and the title. The toolbar's sync chip already surfaces
+/// "正在同步 X / Y 个文件" while `model.refresh()` runs, so the native
+/// `refresh control` is just redundant decoration.
+///
+/// Implementation: observe scroll offset and fire `action` once the user
+/// overscrolls past `triggerOffset` at the top. Re-arms only after the
+/// list settles back inside the bounds, so a long sticky pull doesn't
+/// re-fire continuously. iOS 18+ only — pre-18 silently falls back to no
+/// gesture trigger (auto-sync on space-open still happens).
+private struct SilentPullToRefresh: ViewModifier {
+    let action: @Sendable () async -> Void
+    private let triggerOffset: CGFloat = 70
+    @State private var armed = true
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, macOS 15.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { geo in
+                geo.contentOffset.y
+            } action: { _, newValue in
+                if newValue >= 0 {
+                    armed = true
+                } else if armed, newValue <= -triggerOffset {
+                    armed = false
+                    Task { await action() }
+                }
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private extension View {
+    func silentPullToRefresh(_ action: @escaping @Sendable () async -> Void) -> some View {
+        modifier(SilentPullToRefresh(action: action))
     }
 }
 
