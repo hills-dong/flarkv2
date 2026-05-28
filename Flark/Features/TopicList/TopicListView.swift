@@ -76,6 +76,9 @@ struct TopicListView: View {
         }
         .navigationTitle(model.currentSpace?.name ?? "话题")
         #if os(iOS)
+        // NavigationSplitView's content column defaults to inline on compact
+        // width — force large so the title sits in its tall original spot.
+        .navigationBarTitleDisplayMode(.large)
         // Swap the default chevron for the topic-group icon. The behavior
         // (pop back to the Spaces column) is unchanged — `dismiss()` is what
         // the system chevron would call.
@@ -83,9 +86,6 @@ struct TopicListView: View {
         #endif
         .toolbar {
             #if os(macOS)
-            ToolbarItem(placement: .navigation) {
-                SyncStatusBar(status: model.syncStatus)
-            }
             ToolbarItem(placement: .primaryAction) {
                 Button { composing = true } label: { Image(systemName: "plus") }
                     .help("新建话题（⇧⌘N）")
@@ -102,10 +102,14 @@ struct TopicListView: View {
                     .accessibilityLabel("话题群")
                 }
             }
-            ToolbarItem(placement: .topBarLeading) {
-                SyncStatusBar(status: model.syncStatus)
-            }
             #endif
+            // Sync chip rendered as the first trailing toolbar item — sits
+            // just before the emoji / account buttons, preserving the large
+            // title in its original spot. (iOS pulls the title to inline if
+            // we use `.principal`, so we keep the chip off-center instead.)
+            ToolbarItem(placement: .primaryAction) {
+                syncChipView
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { showEmojiSettings = true } label: { Image(systemName: "face.smiling") }
                     .help("表情设置")
@@ -128,6 +132,61 @@ struct TopicListView: View {
         #else
         "点右下角 + 创建第一个话题"
         #endif
+    }
+
+    /// Sync chip rendered as the first trailing toolbar item — just before
+    /// the emoji / account buttons. Idle → empty view, the slot collapses.
+    /// Leading whitespace is intentional so the spinner / icon doesn't kiss
+    /// the inline title text.
+    @ViewBuilder private var syncChipView: some View {
+        let p = progressText
+        switch model.syncStatus {
+        case .idle:
+            EmptyView()
+        case .syncing:
+            chip(icon: nil,
+                 text: String(localized: "正在同步 \(p)",
+                              comment: "Inline sync chip — actively pulling"),
+                 tint: .secondary, spinner: true)
+        case .throttled:
+            chip(icon: "hourglass",
+                 text: String(localized: "已限流 · \(p)",
+                              comment: "Inline sync chip — throttled"),
+                 tint: .orange, spinner: false)
+        case .offline:
+            chip(icon: "wifi.slash",
+                 text: String(localized: "离线 · \(p)",
+                              comment: "Inline sync chip — offline"),
+                 tint: .orange, spinner: false)
+        }
+    }
+
+    @ViewBuilder
+    private func chip(icon: String?, text: String, tint: Color, spinner: Bool) -> some View {
+        HStack(spacing: 5) {
+            if spinner {
+                ProgressView().controlSize(.small)
+            } else if let icon { Image(systemName: icon) }
+            Text(text).font(.caption).monospacedDigit().lineLimit(1)
+        }
+        .foregroundStyle(tint)
+        .padding(.leading, 12)            // breathing room to the left
+        .fixedSize(horizontal: true, vertical: false)
+        .transition(.opacity)
+    }
+
+    private var progressText: String {
+        let (done, total): (Int, Int) = {
+            switch model.syncStatus {
+            case .idle: return (0, 0)
+            case let .syncing(d, t),
+                 let .throttled(d, t),
+                 let .offline(d, t):
+                return (d, t)
+            }
+        }()
+        guard total > 0 else { return "…" }
+        return "\(done.formatted()) / \(total.formatted()) 个文件"
     }
 
     /// iPad split view: drive selection ourselves via plain `Button` rows

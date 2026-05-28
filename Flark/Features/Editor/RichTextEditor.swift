@@ -25,6 +25,16 @@ struct RichTextEditor: UIViewRepresentable {
     /// caret rect in window coordinates. Held weak inside the handle so
     /// the view's lifecycle is unaffected.
     var handle: EditorHandle? = nil
+    /// When true, the UITextView scrolls internally instead of growing
+    /// with its content. Callers pair this with a `.frame(height:)` driven
+    /// by `contentHeight` below so the editor caps its visible area but
+    /// still lets the user scroll the overflow inside the bar.
+    var scrollEnabled: Bool = false
+    /// Live content height pushed back to the caller (only meaningful when
+    /// `scrollEnabled` is true). Lets a SwiftUI parent clamp the editor's
+    /// frame to `min(contentHeight, cap)` so it tracks input but doesn't
+    /// balloon — UITextView in scroll mode has no usable intrinsic size.
+    var contentHeight: Binding<CGFloat>? = nil
 
     func makeUIView(context: Context) -> UITextView {
         let tv = AutoFocusTextView()
@@ -32,7 +42,7 @@ struct RichTextEditor: UIViewRepresentable {
         handle?.textView = tv
         tv.font = UIFont.preferredFont(forTextStyle: .body)
         tv.backgroundColor = .clear
-        tv.isScrollEnabled = false
+        tv.isScrollEnabled = scrollEnabled
         tv.textContainerInset = .zero
         tv.textContainer.lineFragmentPadding = 0
         tv.adjustsFontForContentSizeCategory = true
@@ -71,6 +81,19 @@ struct RichTextEditor: UIViewRepresentable {
         uiView.typingAttributes = RichTextAttributes.typing(for: typingStyle)
         if focused, !uiView.isFirstResponder {
             DispatchQueue.main.async { _ = uiView.becomeFirstResponder() }
+        }
+        reportContentHeight(uiView)
+    }
+
+    /// Publish the current laid-out content height. The async hop avoids the
+    /// "modifying state during view update" runtime warning when the new
+    /// height drives a `.frame(height:)` on the same view.
+    private func reportContentHeight(_ uiView: UITextView) {
+        guard let binding = contentHeight else { return }
+        let w = uiView.frame.width > 0 ? uiView.frame.width : .greatestFiniteMagnitude
+        let h = ceil(uiView.sizeThatFits(CGSize(width: w, height: .greatestFiniteMagnitude)).height)
+        if abs(binding.wrappedValue - h) > 0.5 {
+            DispatchQueue.main.async { binding.wrappedValue = h }
         }
     }
 
@@ -111,6 +134,7 @@ struct RichTextEditor: UIViewRepresentable {
             // next `updateUIView` doesn't echo it back to the text view.
             lastPushedAttributed = attr
             lastPushedSelection = tv.selectedRange
+            parent.reportContentHeight(tv)
         }
 
         func textViewDidChangeSelection(_ tv: UITextView) {
