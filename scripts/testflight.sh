@@ -35,6 +35,15 @@ echo "▸ regenerating project"
 xcodegen generate >/dev/null
 
 echo "▸ archiving (iOS, automatic signing, build $BUILD_NUMBER)"
+# Note: deliberately not passing `PRODUCT_BUNDLE_IDENTIFIER=$BUNDLE_ID` —
+# that overrides ALL targets including app extensions, so the widget
+# extension ended up with the same bundle ID as the main app and ASC
+# rejected the archive with a CFBundleIdentifier collision. The main
+# app's bundle ID is now read from project.yml (it matches `$BUNDLE_ID`
+# anyway). The `BUNDLE_ID` env var remains a documented knob; if you
+# ever need to override the main app's bundle ID for a side build, edit
+# project.yml or pass `PRODUCT_BUNDLE_IDENTIFIER` only to the Flark
+# target via the `-target Flark` flag.
 xcodebuild -project Flark.xcodeproj -scheme Flark \
   -destination 'generic/platform=iOS' -configuration Release \
   -archivePath "$ARCHIVE" \
@@ -43,7 +52,6 @@ xcodebuild -project Flark.xcodeproj -scheme Flark \
   -authenticationKeyID "$ASC_KEY_ID" \
   -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
   DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
-  PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   CODE_SIGN_STYLE=Automatic \
   clean archive
