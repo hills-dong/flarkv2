@@ -281,6 +281,8 @@ struct SpaceListView: View {
                                     Image(systemName: "checkmark").foregroundStyle(.tint)
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing) {

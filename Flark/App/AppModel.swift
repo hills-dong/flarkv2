@@ -64,13 +64,25 @@ final class AppModel {
 
         if let cur = AccountStore.currentID, accounts.contains(where: { $0.id == cur }),
            loadAccount(cur) {
-            if let first = spaces.first { Task { await openSpace(first) } }
-            else { stage = .noSpace }
+            if let resume = preferredInitialSpace(forAccount: cur) {
+                Task { await openSpace(resume) }
+            } else { stage = .noSpace }
         } else if !accounts.isEmpty {
             stage = .accountPicker          // pick / add a user (no data destroyed)
         } else {
             stage = .onboarding             // no accounts yet → create the first
         }
+    }
+
+    /// Resume the Space the user last had open on this device for `account`,
+    /// falling back to the first one in their list if the saved choice no
+    /// longer exists (e.g. deleted on another device, or never recorded).
+    private func preferredInitialSpace(forAccount account: String) -> SpaceConfig? {
+        if let saved = AccountStore.lastSpaceLocalID(account: account),
+           let hit = spaces.first(where: { $0.localID == saved }) {
+            return hit
+        }
+        return spaces.first
     }
 
     /// One-time import of a pre-multi-user identity into the account model.
@@ -150,8 +162,9 @@ final class AppModel {
             projection = Projection()
             currentSpace = nil
             guard loadAccount(id) else { stage = .accountPicker; return }
-            if let first = spaces.first { await openSpace(first) }
-            else { stage = .noSpace }
+            if let resume = preferredInitialSpace(forAccount: id) {
+                await openSpace(resume)
+            } else { stage = .noSpace }
         }
     }
 
@@ -225,6 +238,9 @@ final class AppModel {
                                 snapshotStore: snapshots)
         self.clock = clock; self.repo = repo; self.engine = engine
         self.currentSpace = cfg
+        if let acct = currentAccountID {
+            AccountStore.setLastSpaceLocalID(cfg.localID, account: acct)
+        }
 
         await engine.setOnChange { [weak self] snap in
             Task { @MainActor in

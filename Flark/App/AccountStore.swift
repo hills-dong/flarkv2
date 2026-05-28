@@ -50,6 +50,24 @@ enum AccountStore {
         }
     }
 
+    /// Per-account, device-local memory of the Space the user last had open.
+    /// Read on launch / account-switch so the user lands back in their last
+    /// Space instead of always the first one in the list. Keyed by Space
+    /// `localID` (the per-install handle), not the shared `spaceID`.
+    static func lastSpaceLocalID(account: String) -> String? {
+        UserDefaults.standard.string(forKey: lastSpaceKey(account))
+    }
+
+    static func setLastSpaceLocalID(_ localID: String?, account: String) {
+        let k = lastSpaceKey(account)
+        if let localID { UserDefaults.standard.set(localID, forKey: k) }
+        else { UserDefaults.standard.removeObject(forKey: k) }
+    }
+
+    private static func lastSpaceKey(_ account: String) -> String {
+        "flark.acct.\(account).lastSpace"
+    }
+
     // MARK: per-account keychain accounts
 
     static func keyAccount(_ id: String) -> String { "flark.acct.\(id).key" }

@@ -61,19 +61,22 @@ struct TopicListView: View {
             .padding(24)
             #endif
         }
-        .overlay(alignment: .topLeading) {
-            SyncStatusBar(status: model.syncStatus)
-                .allowsHitTesting(false)
-        }
         .navigationTitle(model.currentSpace?.name ?? "话题")
         .toolbar {
             #if os(macOS)
+            ToolbarItem(placement: .navigation) {
+                SyncStatusBar(status: model.syncStatus)
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { composing = true } label: { Image(systemName: "plus") }
                     .help("新建话题（⇧⌘N）")
                     // ⌘N collides with WindowGroup's default "New Window";
                     // ⇧⌘N is free.
                     .keyboardShortcut("n", modifiers: [.command, .shift])
+            }
+            #else
+            ToolbarItem(placement: .topBarLeading) {
+                SyncStatusBar(status: model.syncStatus)
             }
             #endif
             ToolbarItem(placement: .primaryAction) {
