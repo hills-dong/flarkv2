@@ -191,7 +191,6 @@ struct TopicListView: View {
                 }
             }
             .listStyle(.plain)
-            .refreshable { await model.refresh() }
         } else {
             // iPhone compact / macOS: keep List(selection:) so SwiftUI can
             // translate a row tap into a push of the detail. No accent
@@ -205,7 +204,6 @@ struct TopicListView: View {
                 }
             }
             .listStyle(.plain)
-            .refreshable { await model.refresh() }
         }
     }
 }
