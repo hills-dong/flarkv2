@@ -21,9 +21,6 @@ struct SyncStatusBar: View {
                     Text(d.text).font(.caption).fontWeight(.medium).lineLimit(1)
                 }
                 .foregroundStyle(d.tint)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .glassButton(Capsule())
                 .fixedSize(horizontal: true, vertical: false)
                 .transition(.opacity)
             }
