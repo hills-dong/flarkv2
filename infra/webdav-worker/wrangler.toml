@@ -1,0 +1,17 @@
+name = "flark-webdav-personal"
+main = "src/worker.js"
+account_id = "4879a0ad446ef6f1e7988a6b42364874"
+compatibility_date = "2026-05-28"
+
+# Custom domain on klib.cn (zone is already on Cloudflare).
+# Wrangler will create the DNS record + Worker route automatically.
+routes = [
+  { pattern = "dav.klib.cn", custom_domain = true }
+]
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "flark-webdav-personal"
+
+# Secrets DAV_USER / DAV_PASS are set via `wrangler secret put` so they
+# never live in git.
