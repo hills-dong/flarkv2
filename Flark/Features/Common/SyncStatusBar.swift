@@ -12,19 +12,18 @@ struct SyncStatusBar: View {
     var body: some View {
         Group {
             if let d = descriptor {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     if d.showsSpinner {
                         ProgressView().controlSize(.small)
                     } else {
                         Image(systemName: d.icon)
                     }
-                    Text(d.text).font(.caption).fontWeight(.medium)
+                    Text(d.text).font(.caption).fontWeight(.medium).lineLimit(1)
                 }
                 .foregroundStyle(d.tint)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.25)))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.flarkCard, in: Capsule())
                 .transition(.opacity)
             }
         }
