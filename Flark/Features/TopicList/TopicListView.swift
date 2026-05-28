@@ -61,8 +61,9 @@ struct TopicListView: View {
             .padding(24)
             #endif
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .overlay(alignment: .topLeading) {
             SyncStatusBar(status: model.syncStatus)
+                .allowsHitTesting(false)
         }
         .navigationTitle(model.currentSpace?.name ?? "话题")
         .toolbar {

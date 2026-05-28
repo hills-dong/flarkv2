@@ -39,6 +39,11 @@ final class AppModel {
     private var clock: HLCClock?
     private var engine: SyncEngine?
     private var repo: SpaceRepository?
+    /// Bumped on every space open/switch. Captured by `openSpace`'s async
+    /// callbacks and post-await writes so that a slow sync from a previously
+    /// selected Space cannot overwrite the projection of the current one when
+    /// the user switches mid-sync.
+    private var openEpoch: UInt64 = 0
 
     // Legacy single-identity accounts (pre multi-user) — migrated on first run.
     private let legacyKey = "device.ed25519.private"
@@ -195,6 +200,8 @@ final class AppModel {
 
     func openSpace(_ cfg: SpaceConfig) async {
         guard let identity else { return }
+        openEpoch &+= 1
+        let epoch = openEpoch
         let backend: StorageBackend
         // Local backends already keep blobs on disk; only the network-backed
         // (WebDAV) Space benefits from a read/write-through blob cache.
@@ -220,16 +227,23 @@ final class AppModel {
         self.currentSpace = cfg
 
         await engine.setOnChange { [weak self] snap in
-            Task { @MainActor in self?.projection = snap }
+            Task { @MainActor in
+                guard let self, self.openEpoch == epoch else { return }
+                self.projection = snap
+            }
         }
         await engine.setOnActivity { [weak self] a in
-            Task { @MainActor in self?.syncStatus = a }
+            Task { @MainActor in
+                guard let self, self.openEpoch == epoch else { return }
+                self.syncStatus = a
+            }
         }
         // Paint instantly from the local cache and show the UI right away;
         // the network bootstrap + initial sync below then run in the
         // background (surfaced only by the slim top status bar) instead of
         // blocking the whole screen on a centered spinner.
         await engine.restoreSnapshot()
+        guard openEpoch == epoch else { return }
         self.projection = await engine.projection
         self.stage = .ready
         try? await repo.bootstrap(spaceName: cfg.name)
@@ -243,6 +257,7 @@ final class AppModel {
         // remote events arrive only when the user pull-to-refreshes on the
         // topic list. Local writes still push automatically via `submit()`.
         await engine.sync(maxNewFiles: 4)
+        guard openEpoch == epoch else { return }
         self.projection = await engine.projection
     }
 

@@ -25,11 +25,12 @@ struct SyncStatusBar: View {
                 .padding(.vertical, 7)
                 .background(.ultraThinMaterial, in: Capsule())
                 .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.25)))
+                .padding(.leading, 12)
                 .padding(.top, 6)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.snappy, value: status)
     }
 
