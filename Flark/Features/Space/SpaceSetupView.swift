@@ -24,20 +24,13 @@ struct SpaceSetupView: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                formContent
-                    .padding(isWide ? 32 : 24)
-                    .frame(maxWidth: isWide ? 540 : 560, alignment: .leading)
-                    .frame(maxWidth: .infinity)
-                    // On iPad/Mac center the form vertically so it doesn't
-                    // cling to the top with a tall empty void below. On
-                    // phone we want the natural top-aligned scroll.
-                    .frame(minHeight: isWide ? proxy.size.height : 0,
-                           alignment: isWide ? .center : .top)
-            }
-            .scrollBounceBehavior(.basedOnSize)
+        ScrollView {
+            formContent
+                .padding(isWide ? 32 : 24)
+                .frame(maxWidth: isWide ? 540 : 560, alignment: .leading)
+                .frame(maxWidth: .infinity)
         }
+        .scrollBounceBehavior(.basedOnSize)
         .background(Color.platformGrouped.ignoresSafeArea())
     }
 

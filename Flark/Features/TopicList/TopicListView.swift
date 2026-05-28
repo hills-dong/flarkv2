@@ -96,7 +96,7 @@ struct TopicListView: View {
             #else
             if isPhone {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: {
+                    Button { onShowSpaces?() } label: {
                         Image(systemName: "rectangle.stack")
                     }
                     .accessibilityLabel("话题群")
