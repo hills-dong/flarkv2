@@ -23,7 +23,8 @@ struct SyncStatusBar: View {
                 .foregroundStyle(d.tint)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(Color.flarkCard, in: Capsule())
+                .background(Color.white, in: Capsule())
+                .fixedSize(horizontal: true, vertical: false)
                 .transition(.opacity)
             }
         }
