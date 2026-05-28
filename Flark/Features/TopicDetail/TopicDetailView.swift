@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import FlarkKit
 
 struct TopicDetailView: View {
@@ -27,12 +28,31 @@ struct TopicDetailView: View {
     #endif
     @FocusState private var quickFocused: Bool
     @State private var showQuickEmoji = false
+    @State private var quickPhoto: PhotosPickerItem?
     /// Reference holder for the autosave debounce so cancel / reassign
     /// doesn't churn observable state (same pattern as `ComposerView`).
     @State private var quickAutosaveBox = AutosaveBox()
     /// Gates autosave until the initial DraftStore load lands, so the
     /// transient empty editor doesn't immediately clobber a stored draft.
     @State private var quickAutosaveArmed = false
+    #if os(iOS)
+    /// Live editor content height — drives the input bar's `.frame(height:)`
+    /// so wrapped / multi-line drafts grow the bar naturally up to roughly
+    /// ten body lines, then the internal scroll handles overflow.
+    @State private var quickEditorHeight: CGFloat = 28
+    /// Roughly 10 lines of body text. A constant beats re-measuring the
+    /// font: exact metrics aren't critical, and emoji attachments are 1.44×
+    /// the body line so this is generous enough to land near 8–9 emoji rows.
+    private let quickEditorMaxHeight: CGFloat = 240
+    #endif
+    /// Bumped from every "user just sent a reply" path so the
+    /// `.onChange` inside the ScrollViewReader can scroll the new reply
+    /// into view. A nonce instead of e.g. `replies.count` so we *don't*
+    /// auto-jump when someone else's reply lands while the user is
+    /// reading further up.
+    @State private var scrollToBottomNonce = 0
+    /// SwiftUI scroll anchor at the very bottom of the content list.
+    private let quickReplyBottomAnchor = "quickReplyBottomAnchor"
 
     /// Coordinate space the source modifiers + overlay both anchor to.
     /// Frames captured by `GeometryReader` here resolve in this space, and
@@ -49,6 +69,7 @@ struct TopicDetailView: View {
         let replies = model.projection.replies(forTopic: topicID)
 
         ZStack(alignment: .topLeading) {
+        ScrollViewReader { scrollProxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if let topic {
@@ -120,14 +141,37 @@ struct TopicDetailView: View {
                     Divider().padding(.leading, 18)
                 }
                 Color.clear.frame(height: 80)
+                    .id(quickReplyBottomAnchor)
+            }
+        }
+        // Nonce-driven jump-to-bottom: every send path (text reply *and*
+        // image-only reply) bumps the nonce, this fires after the new row
+        // has been laid out and brings the user's reply into view. The
+        // tiny async hop is needed because the projection update + the
+        // SwiftUI relayout that adds the new row happen across a render
+        // tick — scrolling synchronously would target the old content
+        // layout and stop short of the new bottom.
+        .onChange(of: scrollToBottomNonce) { _, _ in
+            DispatchQueue.main.async {
+                withAnimation(.spring(duration: 0.35)) {
+                    scrollProxy.scrollTo(quickReplyBottomAnchor, anchor: .bottom)
+                }
             }
         }
         .background(Color.platformGrouped)
         .safeAreaInset(edge: .bottom) {
-            GlassGroup {
-                quickReplyBar
-                    .padding(.horizontal, 16).padding(.bottom, 8)
+            // Two floating bars stacked tight: the top one is a 1-line
+            // input + expand button (tap to fall back to the full
+            // ComposerView for long drafts), the bottom one is the action
+            // dock (emoji, photos, B/I, send). No `GlassGroup` wrapper
+            // because on iOS 26 `GlassEffectContainer` stretches its
+            // content vertically over the bottom inset, which turned an
+            // earlier single-bar layout into a giant blank capsule.
+            VStack(spacing: 6) {
+                quickInputBar
+                quickControlBar
             }
+            .padding(.horizontal, 16).padding(.bottom, 8)
         }
         .navigationTitle("话题详情")
         #if os(iOS)
@@ -144,23 +188,6 @@ struct TopicDetailView: View {
                 }
                 .help("随机飞入一个表情")
             }
-            #if os(iOS)
-            // Send button rides on the keyboard accessory — only visible
-            // while the inline quick-reply field is the first responder.
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button {
-                    sendQuickReply()
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .fontWeight(.bold)
-                        .frame(width: 30, height: 30)
-                        .background(Color.accentColor, in: Circle())
-                        .foregroundStyle(.white)
-                }
-                .disabled(quickDoc.isEmpty)
-            }
-            #endif
         }
         .sheet(isPresented: $showQuickEmoji) {
             EmojiPickerView(title: "选择表情") { item, _ in
@@ -197,12 +224,29 @@ struct TopicDetailView: View {
         #else
         .onChange(of: quickDraft) { _, _ in scheduleQuickAutosave() }
         #endif
+        .onChange(of: quickPhoto) { _, newValue in
+            guard let newValue else { return }
+            Task {
+                if let data = try? await newValue.loadTransferable(type: Data.self),
+                   let up = await model.uploadImage(data) {
+                    // Image picker is a one-shot send: post the picked image
+                    // as its own reply without ever routing it through the
+                    // text editor. The user's typed draft is left untouched
+                    // so they can keep composing alongside the photo reply.
+                    let body = MarkdownCodec.serialize([.image(blobID: up.id)])
+                    model.createReply(topicID: topicID, body: ContentDocument(body: body))
+                    scrollToBottomNonce &+= 1
+                }
+                quickPhoto = nil
+            }
+        }
         .onDisappear {
             // Last chance to persist before the view tears down — covers
             // back-navigation away from the topic. Send/clear paths set
             // `quickAutosaveArmed = false` first so this is a no-op there.
             flushQuickAutosave()
         }
+        }   // end ScrollViewReader
 
             EmojiFlightOverlay(host: flightHost)
                 .allowsHitTesting(false)
@@ -216,22 +260,14 @@ struct TopicDetailView: View {
         .environment(\.optionalEmojiFlightHost, flightHost)
     }
 
-    /// Inline composer that replaces the old "tap to open ComposerView"
-    /// button. Left: emoji picker. Middle: in-place editable input that
-    /// renders inserted emoji as inline image attachments (iOS). Right:
-    /// expand button that hands the current draft to `ComposerView` via
-    /// `DraftStore` for rich-text / image work.
+    /// Top bar — text input that grows with the draft (wrapped lines push
+    /// the bar taller, up to ~10 lines, then the editor scrolls internally)
+    /// plus an expand button to swap into the full ComposerView. The
+    /// Return key here submits the reply instead of inserting a newline:
+    /// new paragraphs are a "go expand" affordance, not an inline gesture.
     @ViewBuilder
-    private var quickReplyBar: some View {
+    private var quickInputBar: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            Button { showQuickEmoji = true } label: {
-                Image(systemName: "face.smiling")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-
             ZStack(alignment: .topLeading) {
                 if quickPlain.isEmpty {
                     Text("回复点什么…")
@@ -239,49 +275,90 @@ struct TopicDetailView: View {
                         .padding(.top, 4).padding(.leading, 1)
                         .allowsHitTesting(false)
                 }
-                // Cap on the editor's column — tall drafts get clipped here
-                // and the user is one tap (pencil) away from the full editor.
-                // Capping on the ZStack (not the editor itself) sidesteps a
-                // quirk where `.frame(maxHeight:)` directly on a
-                // UIViewRepresentable stretches it to the cap even when its
-                // own intrinsic content is smaller.
                 #if os(iOS)
-                // Let the editor size to its content (UITextView's
-                // `isScrollEnabled` stays false so its intrinsic height
-                // tracks the text). No explicit min/max here — empty
-                // content should land at ~one line height; tall drafts
-                // are bounded by the outer `.frame(maxHeight:)` on the
-                // surrounding ZStack so the bar never takes over the
-                // screen.
                 RichTextEditor(attributedText: $quickAttr,
                                selection: $quickSelection,
                                typingStyle: $quickTypingStyle,
-                               focused: $quickFocused)
+                               focused: $quickFocused,
+                               scrollEnabled: true,
+                               onNewlineAttempt: { sendQuickReply() },
+                               contentHeight: $quickEditorHeight)
+                    .frame(height: min(max(quickEditorHeight, 28), quickEditorMaxHeight))
                     .frame(maxWidth: .infinity, alignment: .topLeading)
+                    // Belt-and-braces clipping: UITextView's content can
+                    // visually overflow the SwiftUI-imposed frame on some
+                    // hosting paths even with `tv.clipsToBounds = true`.
+                    .clipped()
                 #else
                 TextField("", text: $quickDraft, axis: .vertical)
                     .focused($quickFocused)
                     .textFieldStyle(.plain)
-                    .lineLimit(1...5)
-                    .frame(minHeight: 28)
+                    .lineLimit(1...10)
+                    .onSubmit { sendQuickReply() }
                 #endif
             }
-            .frame(maxHeight: 140)
 
             Button { expandQuickReply() } label: {
-                Image(systemName: "square.and.pencil")
+                // Same "expand to fullscreen" glyph as the original — just
+                // rotated 90° so the arrows run along the bottom-left ↔
+                // top-right diagonal instead of top-left ↔ bottom-right.
+                // SF Symbols' `arrow.up.right.and.arrow.down.left` reads as
+                // a shrink icon despite the name, so we keep the trusted
+                // glyph and rotate it.
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
                     .font(.title3)
                     .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(90))
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
-        // RoundedRectangle (not Capsule): the capsule's end-cap radius scales
-        // to half the height, which on a multi-line composer balloons into
-        // huge semicircles. A fixed corner radius keeps the shape sane as
-        // the editor grows up to its `maxHeight`.
+        // RoundedRectangle (not Capsule): once the bar grows to multiple
+        // lines the capsule's height-following end caps balloon into ugly
+        // half-circles. A fixed corner radius reads cleanly at any height.
         .glassSurface(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    /// Bottom bar — the action dock. Mirrors the full ComposerView's
+    /// toolbar (emoji, photos, B / I, send) so users get the same set of
+    /// affordances without leaving the topic page for short replies.
+    @ViewBuilder
+    private var quickControlBar: some View {
+        HStack(spacing: 14) {
+            Button { showQuickEmoji = true } label: {
+                Image(systemName: "face.smiling").font(.title3)
+            }
+            PhotosPicker(selection: $quickPhoto, matching: .images) {
+                Image(systemName: "photo").font(.title3)
+            }
+            #if os(iOS)
+            Button { toggleQuickStyle(.bold) } label: {
+                Image(systemName: "bold")
+                    .font(.title3)
+                    .foregroundStyle(quickTypingStyle.contains(.bold) ? Color.accentColor : .primary)
+            }
+            Button { toggleQuickStyle(.italic) } label: {
+                Image(systemName: "italic")
+                    .font(.title3)
+                    .foregroundStyle(quickTypingStyle.contains(.italic) ? Color.accentColor : .primary)
+            }
+            #endif
+            Spacer()
+            #if !os(macOS)
+            Button {
+                sendQuickReply()
+            } label: {
+                Image(systemName: "arrow.up").fontWeight(.bold)
+                    .frame(width: 34, height: 34)
+                    .background(Color.accentColor, in: Circle())
+                    .foregroundStyle(.white)
+            }
+            .disabled(quickDoc.isEmpty)
+            #endif
+        }
+        .padding(.horizontal, 18).padding(.vertical, 8)
+        .glassSurface(Capsule())
     }
 
     private var quickPlain: String {
@@ -320,10 +397,26 @@ struct TopicDetailView: View {
         quickFocused = true
     }
 
+    #if os(iOS)
+    /// Toggle a single style bit on the inline editor's selection — or, for
+    /// a collapsed caret, flip the pending typing-style so the next typed
+    /// run inherits it. Matches `ComposerView.toggleStyle` semantics.
+    private func toggleQuickStyle(_ bit: Style) {
+        if quickSelection.length > 0 {
+            quickAttr = RichTextAttributes.toggle(bit, on: quickAttr, range: quickSelection)
+        } else {
+            if quickTypingStyle.contains(bit) { quickTypingStyle.remove(bit) }
+            else { quickTypingStyle.insert(bit) }
+        }
+        quickFocused = true
+    }
+    #endif
+
     private func sendQuickReply() {
         let doc = quickDoc
         guard !doc.isEmpty else { return }
         model.createReply(topicID: topicID, body: doc)
+        scrollToBottomNonce &+= 1
         // Finalize the draft on the same tick so the pending autosave (which
         // a moment from now would write the about-to-be-empty inline back to
         // disk) can't resurrect the sent text.

@@ -26,14 +26,25 @@ struct RichTextEditor: UIViewRepresentable {
     /// the view's lifecycle is unaffected.
     var handle: EditorHandle? = nil
     /// When true, the UITextView scrolls internally instead of growing
-    /// with its content. Callers pair this with a `.frame(height:)` driven
-    /// by `contentHeight` below so the editor caps its visible area but
-    /// still lets the user scroll the overflow inside the bar.
+    /// with its content. Used by the inline quick-reply bar so a fixed
+    /// single-line frame can show the *last* line of a multi-line draft —
+    /// older lines scroll up out of view as the user types, and UITextView
+    /// keeps the caret visible automatically.
     var scrollEnabled: Bool = false
-    /// Live content height pushed back to the caller (only meaningful when
-    /// `scrollEnabled` is true). Lets a SwiftUI parent clamp the editor's
-    /// frame to `min(contentHeight, cap)` so it tracks input but doesn't
-    /// balloon — UITextView in scroll mode has no usable intrinsic size.
+    /// When non-nil, a typed Return is *not* inserted into the text and
+    /// the callback fires instead — used by the inline reply bar to make
+    /// Return submit the draft. We deliberately only trip on a single-`\n`
+    /// replacement (the OS's signature for the Return key); pasted text
+    /// that happens to contain newlines still inserts normally so the
+    /// caller doesn't lose multi-paragraph clipboard content.
+    var onNewlineAttempt: (() -> Void)? = nil
+    /// Pushed back to the caller every time the laid-out content height
+    /// changes. Lets a SwiftUI parent apply a fixed `.frame(height:)` that
+    /// tracks the editor as it grows with wrapped / multi-line text — and
+    /// then caps with `min(height, ceiling)`. On iOS 26 a `.frame(maxHeight:)`
+    /// over a UIViewRepresentable in `safeAreaInset` gets treated as a
+    /// fixed cap (always fills to maxHeight); reading the real content
+    /// height and applying a clamped fixed height side-steps that.
     var contentHeight: Binding<CGFloat>? = nil
 
     func makeUIView(context: Context) -> UITextView {
@@ -43,6 +54,12 @@ struct RichTextEditor: UIViewRepresentable {
         tv.font = UIFont.preferredFont(forTextStyle: .body)
         tv.backgroundColor = .clear
         tv.isScrollEnabled = scrollEnabled
+        // UIScrollView clips its content by default, but UITextView inside
+        // SwiftUI's representable layer ends up with `clipsToBounds = false`
+        // — the inline single-line bar relies on `.frame(height:)` to cap
+        // its viewport, and without clipping the overflowing earlier lines
+        // bleed above and below the bar's Capsule.
+        tv.clipsToBounds = true
         tv.textContainerInset = .zero
         tv.textContainer.lineFragmentPadding = 0
         tv.adjustsFontForContentSizeCategory = true
@@ -74,6 +91,12 @@ struct RichTextEditor: UIViewRepresentable {
             coord.lastPushedAttributed = attributedText
             uiView.selectedRange = target
             coord.lastPushedSelection = target
+            // For scroll-mode editors (the inline single-line bar), pin the
+            // viewport to the last line on every content change. Without
+            // this, a multi-line draft loaded from DraftStore lands with
+            // contentOffset = 0 — the *first* line shows and the latest
+            // typing is off-screen until the user scrolls.
+            scrollToEndIfNeeded(uiView)
         } else if !NSEqualRanges(coord.lastPushedSelection, target) {
             uiView.selectedRange = target
             coord.lastPushedSelection = target
@@ -85,15 +108,32 @@ struct RichTextEditor: UIViewRepresentable {
         reportContentHeight(uiView)
     }
 
-    /// Publish the current laid-out content height. The async hop avoids the
-    /// "modifying state during view update" runtime warning when the new
-    /// height drives a `.frame(height:)` on the same view.
-    private func reportContentHeight(_ uiView: UITextView) {
+    /// Publish the current laid-out content height to the binding. Async
+    /// so the write happens outside SwiftUI's view-update transaction.
+    fileprivate func reportContentHeight(_ uiView: UITextView) {
         guard let binding = contentHeight else { return }
         let w = uiView.frame.width > 0 ? uiView.frame.width : .greatestFiniteMagnitude
         let h = ceil(uiView.sizeThatFits(CGSize(width: w, height: .greatestFiniteMagnitude)).height)
         if abs(binding.wrappedValue - h) > 0.5 {
             DispatchQueue.main.async { binding.wrappedValue = h }
+        }
+    }
+
+    /// Pin the viewport's bottom edge to the end of content — used by the
+    /// inline single-line bar so a multi-line draft shows its latest line,
+    /// not the first or some middle slice. We bypass `scrollRangeToVisible`
+    /// (which empirically targets the top of a zero-length range and
+    /// sometimes leaves the offset mid-content) and compute the offset
+    /// directly. Layout is forced first because `contentSize` reflects the
+    /// previous layout until TextKit relays.
+    private func scrollToEndIfNeeded(_ uiView: UITextView) {
+        guard scrollEnabled else { return }
+        DispatchQueue.main.async {
+            uiView.layoutIfNeeded()
+            let contentH = uiView.contentSize.height
+            let viewH = uiView.bounds.height
+            let maxOffsetY = max(0, contentH - viewH)
+            uiView.setContentOffset(CGPoint(x: 0, y: maxOffsetY), animated: false)
         }
     }
 
@@ -170,6 +210,21 @@ struct RichTextEditor: UIViewRepresentable {
 
         func textViewDidBeginEditing(_ tv: UITextView) { parent.focused = true }
         func textViewDidEndEditing(_ tv: UITextView) { parent.focused = false }
+
+        /// Intercept Return as a high-level event (e.g. send / submit) when
+        /// a caller has wired the callback. Only the bare Return character
+        /// matches — pasted text with embedded newlines still flows through
+        /// the normal insertion path so multi-paragraph clipboard content
+        /// isn't accidentally turned into a submit gesture.
+        func textView(_ textView: UITextView,
+                      shouldChangeTextIn range: NSRange,
+                      replacementText text: String) -> Bool {
+            if let handler = parent.onNewlineAttempt, text == "\n" {
+                handler()
+                return false
+            }
+            return true
+        }
     }
 }
 
