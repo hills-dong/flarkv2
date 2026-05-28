@@ -23,7 +23,7 @@ struct SyncStatusBar: View {
                 .foregroundStyle(d.tint)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(Color.white, in: Capsule())
+                .glassButton(Capsule())
                 .fixedSize(horizontal: true, vertical: false)
                 .transition(.opacity)
             }
