@@ -158,6 +158,15 @@ struct TopicDetailView: View {
                 }
             }
         }
+        // Standard chat-app feel: any scroll drops the keyboard right
+        // away, and a tap anywhere in the conversation list also defocuses
+        // the reply field. `simultaneousGesture` so reply-card taps and
+        // reaction-panel long-presses keep working — both fire, the side
+        // effect is the keyboard going away.
+        .scrollDismissesKeyboard(.immediately)
+        .simultaneousGesture(
+            TapGesture().onEnded { quickFocused = false }
+        )
         .background(Color.platformGrouped)
         .safeAreaInset(edge: .bottom) {
             // Two floating bars stacked tight: the top one is a 1-line
@@ -267,12 +276,16 @@ struct TopicDetailView: View {
     /// new paragraphs are a "go expand" affordance, not an inline gesture.
     @ViewBuilder
     private var quickInputBar: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            ZStack(alignment: .topLeading) {
+        // `.center` so the placeholder, caret, and the expand button all
+        // sit on the same vertical midline of the bar. For multi-line
+        // drafts the editor still grows up evenly above and below — the
+        // button floats centered against it, which reads cleaner than the
+        // bottom-pinned variant once content takes a couple of rows.
+        HStack(alignment: .center, spacing: 10) {
+            ZStack(alignment: .leading) {
                 if quickPlain.isEmpty {
                     Text("回复点什么…")
                         .foregroundStyle(.secondary)
-                        .padding(.top, 4).padding(.leading, 1)
                         .allowsHitTesting(false)
                 }
                 #if os(iOS)
@@ -284,7 +297,7 @@ struct TopicDetailView: View {
                                onNewlineAttempt: { sendQuickReply() },
                                contentHeight: $quickEditorHeight)
                     .frame(height: min(max(quickEditorHeight, 28), quickEditorMaxHeight))
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     // Belt-and-braces clipping: UITextView's content can
                     // visually overflow the SwiftUI-imposed frame on some
                     // hosting paths even with `tv.clipsToBounds = true`.
