@@ -205,6 +205,7 @@ struct TopicListView: View {
                 }
             }
             .listStyle(.plain)
+            .silentPullToRefresh { await model.refresh() }
         }
     }
 }
