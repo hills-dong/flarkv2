@@ -10,3 +10,6 @@ Flark.xcodeproj/
 
 # Local Cloudflare Wrangler cache
 .wrangler/
+
+# Local-only credentials & scratch (App Store Connect API keys, etc.)
+.context/

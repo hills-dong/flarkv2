@@ -260,56 +260,22 @@ struct SpaceListView: View {
     @State private var adding = false
     @State private var editing: SpaceConfig?
     @State private var pendingDelete: SpaceConfig?
+    /// Drives the "邀请链接已复制" alert. Holds the result message (success or
+    /// failure) so the same alert sheet can render either outcome.
+    @State private var inviteAlert: InviteAlert?
+
+    private struct InviteAlert: Identifiable {
+        let id = UUID()
+        let title: LocalizedStringKey
+        let message: LocalizedStringKey
+    }
 
     var body: some View {
         NavigationStack {
             List {
                 Section("我的话题群") {
                     ForEach(model.spaces) { space in
-                        Button {
-                            model.switchSpace(space); dismiss()
-                        } label: {
-                            HStack {
-                                Image(systemName: space.kind == .webdav ? "cloud" : "folder")
-                                VStack(alignment: .leading) {
-                                    Text(space.name)
-                                    Text(space.kind == .webdav ? (space.webdavURL ?? "") : "本地")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if space.id == model.currentSpace?.id {
-                                    Image(systemName: "checkmark").foregroundStyle(.tint)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                pendingDelete = space
-                            } label: {
-                                Label("删除", systemImage: "trash")
-                            }
-                            Button {
-                                editing = space
-                            } label: {
-                                Label("编辑", systemImage: "pencil")
-                            }
-                            .tint(.blue)
-                        }
-                        .contextMenu {
-                            Button {
-                                editing = space
-                            } label: {
-                                Label("编辑", systemImage: "pencil")
-                            }
-                            Button(role: .destructive) {
-                                pendingDelete = space
-                            } label: {
-                                Label("删除", systemImage: "trash")
-                            }
-                        }
+                        row(for: space)
                     }
                 }
             }
@@ -339,6 +305,158 @@ struct SpaceListView: View {
                      ? "本地话题群将被永久删除，其中的全部话题、回复与图片都会从本机移除，无法恢复。"
                      : "将从本机移除该话题群与已保存的凭据；WebDAV 服务器上的共享数据不受影响。")
             }
+            .alert(item: $inviteAlert) { alert in
+                Alert(title: Text(alert.title),
+                      message: Text(alert.message),
+                      dismissButton: .default(Text("好的")))
+            }
         }
+    }
+
+    /// Row = main tap area (switch to that space) + trailing `…` menu. The
+    /// menu lives as a sibling button so its taps don't get eaten by the row
+    /// button's hit area. Swipe + long-press actions are gone — everything
+    /// goes through the explicit menu now.
+    @ViewBuilder private func row(for space: SpaceConfig) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                model.switchSpace(space); dismiss()
+            } label: {
+                HStack {
+                    Image(systemName: space.kind == .webdav ? "cloud" : "folder")
+                    VStack(alignment: .leading) {
+                        Text(space.name)
+                        Group {
+                            if space.kind == .webdav {
+                                Text(verbatim: space.webdavURL ?? "")
+                            } else {
+                                Text("本地")
+                            }
+                        }
+                        .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    if space.id == model.currentSpace?.id {
+                        Image(systemName: "checkmark").foregroundStyle(.tint)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                if space.kind == .webdav {
+                    Button {
+                        copyInvite(for: space)
+                    } label: {
+                        Label("邀请", systemImage: "person.crop.circle.badge.plus")
+                    }
+                }
+                Button {
+                    editing = space
+                } label: {
+                    Label("编辑", systemImage: "pencil")
+                }
+                Button(role: .destructive) {
+                    pendingDelete = space
+                } label: {
+                    Label("删除", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44, alignment: .center)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .menuStyle(.button)
+        }
+    }
+
+    private func copyInvite(for space: SpaceConfig) {
+        do {
+            let url = try model.exportInviteURL(for: space)
+            copyInviteToClipboard(url.absoluteString)
+            inviteAlert = InviteAlert(
+                title: "邀请链接已复制",
+                message: "链接已复制到剪贴板，有效期 7 天。\n请只发给信任的人——链接含 WebDAV 凭据。")
+        } catch {
+            let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            inviteAlert = InviteAlert(
+                title: "无法生成邀请链接",
+                message: LocalizedStringKey(msg))
+        }
+    }
+}
+
+/// Shared platform pasteboard helper for invite links. Kept file-private so
+/// it doesn't collide with the identical helper inside `IdentitySettingsView`.
+fileprivate func copyInviteToClipboard(_ s: String) {
+    #if canImport(UIKit)
+    UIPasteboard.general.string = s
+    #else
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(s, forType: .string)
+    #endif
+}
+
+/// Confirmation sheet that pops when an incoming `flark://invite/...` link
+/// has been successfully decrypted. Globally mounted on `RootView`.
+struct InviteConfirmView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let payload: SpaceInvitePayload
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    LabeledContent("群名", value: payload.name)
+                    LabeledContent("群 ID", value: shortID)
+                    LabeledContent("WebDAV", value: payload.url)
+                    LabeledContent("账号", value: payload.user)
+                } header: { Text("收到一个话题群邀请") }
+                footer: {
+                    Text("加入后会在本机新建一个 WebDAV 绑定；可在「我的话题群」里管理。链接有效期至 \(expiryString)。")
+                }
+
+                Section {
+                    Button {
+                        model.acceptPendingInvite()
+                        dismiss()
+                    } label: {
+                        Label("加入此话题群", systemImage: "person.crop.circle.badge.checkmark")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .disabled(model.currentAccountID == nil)
+                }
+            }
+            .navigationTitle("加入话题群")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        model.dismissPendingInvite()
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private var shortID: String {
+        let s = payload.id
+        return s.count > 12 ? String(s.prefix(8)) + "…" : s
+    }
+
+    private var expiryString: String {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f.string(from: payload.expiresAt)
     }
 }

@@ -35,6 +35,22 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        @Bindable var model = model
+        stageContent
+            .onOpenURL { model.handleInviteURL($0) }
+            .sheet(item: $model.pendingInvite) { invite in
+                InviteConfirmView(payload: invite)
+            }
+            .alert("邀请链接无效",
+                   isPresented: Binding(get: { model.inviteError != nil },
+                                         set: { if !$0 { model.clearInviteError() } })) {
+                Button("好的", role: .cancel) { model.clearInviteError() }
+            } message: {
+                Text(model.inviteError ?? "")
+            }
+    }
+
+    @ViewBuilder private var stageContent: some View {
         switch model.stage {
         case .loading:
             ProgressView().controlSize(.large)

@@ -22,6 +22,16 @@ final class AppModel {
     var accounts: [AccountRef] = []
     private(set) var currentAccountID: String?
 
+    /// Set when an incoming `flark://invite/...` URL has been decrypted and
+    /// is waiting for the user to confirm joining. Drives a global sheet
+    /// mounted on `WindowGroup`.
+    var pendingInvite: SpaceInvitePayload?
+    /// One-shot error surfaced after a malformed/expired invite link.
+    var inviteError: String?
+    /// Holds an invite URL that arrived before any account was loaded (cold
+    /// start landing on onboarding / account picker). Re-fired after login.
+    private var deferredInviteURL: URL?
+
     let emoji = EmojiCatalog.load(
         manifestURL: Bundle.main.url(forResource: "manifest", withExtension: "json", subdirectory: "Emoji")
             ?? Bundle.main.url(forResource: "manifest", withExtension: "json"))
@@ -123,6 +133,7 @@ final class AppModel {
         AccountStore.currentID = id
         spaces = SpaceStore.load(account: id)
         rebindEmojiUsage(to: id)
+        replayDeferredInviteIfAny()
         return true
     }
 
@@ -152,6 +163,7 @@ final class AppModel {
         projection = Projection()
         rebindEmojiUsage(to: id)
         stage = .noSpace
+        replayDeferredInviteIfAny()
     }
 
     /// Switch to another local account (data preserved for all accounts).
@@ -209,6 +221,67 @@ final class AppModel {
         Keychain.setString(password, account: spacePwAccount(cfg.localID), sync: true)
         spaces.append(cfg); persistSpaces()
         Task { await openSpace(cfg) }
+    }
+
+    // MARK: - Invite links
+
+    /// Build a `flark://invite/<token>` URL for a WebDAV space. Token is
+    /// AES-GCM ciphertext keyed by a per-invite random 256-bit key embedded in
+    /// the URL itself; `exp` (7 days) is authenticated, so the recipient can't
+    /// extend it by editing the link.
+    func exportInviteURL(for cfg: SpaceConfig) throws -> URL {
+        guard cfg.kind == .webdav,
+              let urlStr = cfg.webdavURL, let user = cfg.webdavUser else {
+            throw SpaceInviteError.malformed
+        }
+        let pw = Keychain.getString(spacePwAccount(cfg.localID)) ?? ""
+        return try SpaceInviteCodec.makeURL(
+            spaceID: cfg.id, name: cfg.name, url: urlStr, user: user, pw: pw)
+    }
+
+    /// Entry point from `WindowGroup.onOpenURL`. Defers parsing until an
+    /// account is loaded; otherwise parses and queues a confirmation sheet
+    /// via `pendingInvite`.
+    func handleInviteURL(_ url: URL) {
+        guard SpaceInviteCodec.isInviteURL(url) else { return }
+        guard currentAccountID != nil else {
+            deferredInviteURL = url
+            return
+        }
+        do {
+            pendingInvite = try SpaceInviteCodec.parse(url)
+            inviteError = nil
+        } catch {
+            pendingInvite = nil
+            inviteError = (error as? SpaceInviteError)?.errorDescription
+                ?? error.localizedDescription
+        }
+    }
+
+    /// Replay an invite URL that arrived before login was complete. Called
+    /// from every code path that successfully establishes `currentAccountID`.
+    private func replayDeferredInviteIfAny() {
+        guard let u = deferredInviteURL else { return }
+        deferredInviteURL = nil
+        handleInviteURL(u)
+    }
+
+    /// Accept the pending invite by joining as a fresh WebDAV binding. Reuses
+    /// the existing `addWebDAVSpace` path (which generates a new `localID`),
+    /// so binding the same shared spaceID twice on this device is safe.
+    func acceptPendingInvite() {
+        guard let inv = pendingInvite else { return }
+        pendingInvite = nil
+        addWebDAVSpace(name: inv.name, url: inv.url, user: inv.user,
+                       password: inv.pw, spaceID: inv.id)
+    }
+
+    func dismissPendingInvite() {
+        pendingInvite = nil
+    }
+
+    func clearInviteError() {
+        inviteError = nil
     }
 
     func openSpace(_ cfg: SpaceConfig) async {
