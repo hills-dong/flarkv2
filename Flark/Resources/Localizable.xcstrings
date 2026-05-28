@@ -243,6 +243,17 @@
         }
       }
     },
+    "切换全局表情图片样式。所有消息中的表情会立即换新。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Switch the global emoji image style. Emoji in every message update instantly."
+          }
+        }
+      }
+    },
     "刚刚": {
       "extractionState": "manual",
       "localizations": {
@@ -331,6 +342,17 @@
         }
       }
     },
+    "加入后会在本机新建一个 WebDAV 绑定；可在「我的话题群」里管理。链接有效期至 %@。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Joining adds a new WebDAV binding on this device; manage it in 'My Spaces'. Link valid until %@."
+          }
+        }
+      }
+    },
     "加入已有群填群 ID；留空则新建": {
       "extractionState": "manual",
       "localizations": {
@@ -338,6 +360,50 @@
           "stringUnit": {
             "state": "translated",
             "value": "Enter a space ID to join an existing one; leave blank to create"
+          }
+        }
+      }
+    },
+    "加入此话题群": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Join this space"
+          }
+        }
+      }
+    },
+    "加入话题群": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Join Space"
+          }
+        }
+      }
+    },
+    "北欧精灵": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nordic Elf"
+          }
+        }
+      }
+    },
+    "北欧精灵女孩": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nordic Elf Girl"
           }
         }
       }
@@ -419,6 +485,17 @@
         }
       }
     },
+    "启用表情飞行动效": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable emoji fly-in animation"
+          }
+        }
+      }
+    },
     "回复": {
       "extractionState": "manual",
       "localizations": {
@@ -459,6 +536,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Copy Recovery Code"
+          }
+        }
+      }
+    },
+    "好的": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
           }
         }
       }
@@ -738,6 +826,17 @@
         }
       }
     },
+    "控制选表情飞入编辑器、表情反应飞入气泡的动画。关闭后选表情会即时落位；详情页右上角的彩蛋按钮不受影响。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controls the fly-in animation when picking emoji into the editor and when reacting to a bubble. When off, picked emoji land instantly; the easter-egg button in the detail nav bar is unaffected."
+          }
+        }
+      }
+    },
     "操作发生后会立刻出现在这里": {
       "extractionState": "manual",
       "localizations": {
@@ -756,6 +855,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Activity Log"
+          }
+        }
+      }
+    },
+    "收到一个话题群邀请": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've received a space invite"
           }
         }
       }
@@ -844,6 +954,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Serverless topic spaces. Start by creating a local identity — no sign-up."
+          }
+        }
+      }
+    },
+    "无法生成邀请链接": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't generate invite link"
           }
         }
       }
@@ -1222,6 +1343,17 @@
         }
       }
     },
+    "群名": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name"
+          }
+        }
+      }
+    },
     "自动同步": {
       "extractionState": "manual",
       "localizations": {
@@ -1229,6 +1361,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Auto Sync"
+          }
+        }
+      }
+    },
+    "表情包": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Emoji pack"
+          }
+        }
+      }
+    },
+    "表情设置": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Emoji settings"
           }
         }
       }
@@ -1394,6 +1548,116 @@
           "stringUnit": {
             "state": "translated",
             "value": "Choose Identity"
+          }
+        }
+      }
+    },
+    "邀请": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invite"
+          }
+        }
+      }
+    },
+    "邀请链接已复制": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invite link copied"
+          }
+        }
+      }
+    },
+    "邀请链接已过期": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invite link has expired"
+          }
+        }
+      }
+    },
+    "邀请链接无效": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid invite link"
+          }
+        }
+      }
+    },
+    "邀请链接格式不正确": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invite link is malformed"
+          }
+        }
+      }
+    },
+    "邀请链接版本过新，请升级 App": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invite link uses a newer format — please update the app"
+          }
+        }
+      }
+    },
+    "邀请链接解密失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't decrypt invite link"
+          }
+        }
+      }
+    },
+    "链接已复制到剪贴板，有效期 7 天。\n请只发给信任的人——链接含 WebDAV 凭据。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Link copied to clipboard, valid for 7 days.\nOnly share with people you trust — it contains the WebDAV credentials."
+          }
+        }
+      }
+    },
+    "随机飞入一个表情": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Throw a random emoji"
+          }
+        }
+      }
+    },
+    "预览": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preview"
           }
         }
       }
