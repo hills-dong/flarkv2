@@ -37,8 +37,13 @@ targets:
           - "Info.plist"
       - path: Flark/Resources/Emoji
         type: folder
+      - path: FlarkShared
     dependencies:
       - package: FlarkKit
+      - target: FlarkSyncActivityWidget
+        embed: true
+        codeSign: true
+        link: false
     # Custom Info.plist (xcodegen-managed). Switched away from
     # `GENERATE_INFOPLIST_FILE: YES` because URL schemes can't be expressed via
     # the scalar `INFOPLIST_KEY_*` build settings — we need a real plist file
@@ -54,6 +59,7 @@ targets:
             CFBundleURLSchemes: [flark]
         NSCameraUsageDescription: "用于拍摄并插入图片到话题与回复。"
         NSPhotoLibraryUsageDescription: "用于选择并插入图片到话题与回复。"
+        NSSupportsLiveActivities: true
         LSApplicationCategoryType: "public.app-category.productivity"
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
@@ -76,6 +82,31 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_PREVIEWS: YES
         GENERATE_INFOPLIST_FILE: NO
+
+  FlarkSyncActivityWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget:
+      iOS: "17.0"
+    sources:
+      - path: FlarkSyncActivityWidget
+        excludes:
+          - "Info.plist"
+      - path: FlarkShared
+    info:
+      path: FlarkSyncActivityWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Flark Sync
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.flark.bogota.SyncWidget
+        PRODUCT_NAME: FlarkSyncActivityWidget
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
 
 schemes:
   Flark:

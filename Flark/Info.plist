@@ -39,6 +39,8 @@
 	<string>用于拍摄并插入图片到话题与回复。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于选择并插入图片到话题与回复。</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

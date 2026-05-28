@@ -18,6 +18,11 @@ final class AppModel {
     /// Coarse background sync/compaction activity for the status indicator.
     var syncStatus: SyncActivity = .idle
 
+    #if canImport(ActivityKit)
+    /// Bridges `syncStatus` updates to a Dynamic Island Live Activity.
+    private let liveActivity = SyncLiveActivityHost()
+    #endif
+
     /// All local accounts (multi-user). `currentAccountID` is the active one.
     var accounts: [AccountRef] = []
     private(set) var currentAccountID: String?
@@ -325,8 +330,14 @@ final class AppModel {
             Task { @MainActor in
                 guard let self, self.openEpoch == epoch else { return }
                 self.syncStatus = a
+                #if canImport(ActivityKit)
+                self.liveActivity.apply(a)
+                #endif
             }
         }
+        #if canImport(ActivityKit)
+        liveActivity.setSpaceName(cfg.name)
+        #endif
         // Paint instantly from the local cache and show the UI right away;
         // the network bootstrap + initial sync below then run in the
         // background (surfaced only by the slim top status bar) instead of
