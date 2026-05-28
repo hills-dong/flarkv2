@@ -3,25 +3,11 @@ import FlarkKit
 
 struct TopicListView: View {
     @Environment(AppModel.self) private var model
-    /// Invoked when the user taps the leading topic-group icon on iPhone.
-    /// The shell uses this to flip `preferredCompactColumn` back to
-    /// `.sidebar` — `dismiss()` from inside a NavigationSplitView content
-    /// column does not reliably do that, hence an explicit callback.
-    var onShowSpaces: (() -> Void)? = nil
     @Binding var selection: String?
     @State private var composing = false
     @State private var showIdentity = false
     @State private var showEmojiSettings = false
     @State private var editingTopic: EditingTopic? = nil
-
-    /// iPhone only — on iPad the Spaces column is visible alongside, so the
-    /// custom "back to spaces" button would be redundant (and `dismiss` from
-    /// the content column is a no-op when nothing is pushed).
-    #if os(iOS)
-    private var isPhone: Bool {
-        UIDevice.current.userInterfaceIdiom == .phone
-    }
-    #endif
 
     /// True on iPad (regardless of orientation) and macOS — i.e. anywhere
     /// `NavigationSplitView` keeps the master column visible next to the
@@ -75,35 +61,14 @@ struct TopicListView: View {
             #endif
         }
         .navigationTitle(model.currentSpace?.name ?? "话题")
-        #if os(iOS)
-        // Swap the default chevron for the topic-group icon. The behavior
-        // (pop back to the Spaces column) is unchanged — `dismiss()` is what
-        // the system chevron would call.
-        .navigationBarBackButtonHidden(isPhone)
-        #endif
         .toolbar {
             #if os(macOS)
-            ToolbarItem(placement: .navigation) {
-                SyncStatusBar(status: model.syncStatus)
-            }
             ToolbarItem(placement: .primaryAction) {
                 Button { composing = true } label: { Image(systemName: "plus") }
                     .help("新建话题（⇧⌘N）")
                     // ⌘N collides with WindowGroup's default "New Window";
                     // ⇧⌘N is free.
                     .keyboardShortcut("n", modifiers: [.command, .shift])
-            }
-            #else
-            if isPhone {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "rectangle.stack")
-                    }
-                    .accessibilityLabel("话题群")
-                }
-            }
-            ToolbarItem(placement: .topBarLeading) {
-                SyncStatusBar(status: model.syncStatus)
             }
             #endif
             ToolbarItem(placement: .primaryAction) {
