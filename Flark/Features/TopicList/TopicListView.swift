@@ -222,24 +222,17 @@ struct TopicListView: View {
 /// gesture trigger (auto-sync on space-open still happens).
 private struct SilentPullToRefresh: ViewModifier {
     let action: @Sendable () async -> Void
-    private let triggerOffset: CGFloat = 70
-    @State private var armed = true
 
     func body(content: Content) -> some View {
-        if #available(iOS 18.0, macOS 15.0, *) {
-            content.onScrollGeometryChange(for: CGFloat.self) { geo in
-                geo.contentOffset.y
-            } action: { _, newValue in
-                if newValue >= 0 {
-                    armed = true
-                } else if armed, newValue <= -triggerOffset {
-                    armed = false
-                    Task { await action() }
-                }
-            }
-        } else {
-            content
-        }
+        // `.refreshable` is what wires up the gesture + the async invocation;
+        // `.clipped()` then masks the rubber-band region above the first row
+        // where the system progress wheel would otherwise paint, so the
+        // user sees only their pull (and the toolbar chip below it). Tint
+        // is set to clear as belt-and-braces in case clipping is bypassed
+        // on a future iOS version.
+        content
+            .refreshable { await action() }
+            .clipped()
     }
 }
 
