@@ -309,7 +309,12 @@ struct TopicDetailView: View {
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(90))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 36, height: 36)
+                    // Without `contentShape`, `.buttonStyle(.plain)` hit-tests
+                    // only the glyph silhouette — a thin diagonal arrow is
+                    // nearly impossible to tap. The Rectangle takes the
+                    // whole 36×36 frame.
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
@@ -325,23 +330,36 @@ struct TopicDetailView: View {
     /// affordances without leaving the topic page for short replies.
     @ViewBuilder
     private var quickControlBar: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 4) {
+            // 36×36 hit boxes with `contentShape(Rectangle())` are what make
+            // these targetable — the bold / italic glyphs especially are
+            // narrow strokes that hit-test the actual pixels otherwise.
             Button { showQuickEmoji = true } label: {
-                Image(systemName: "face.smiling").font(.title3)
+                Image(systemName: "face.smiling")
+                    .font(.title3)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
             PhotosPicker(selection: $quickPhoto, matching: .images) {
-                Image(systemName: "photo").font(.title3)
+                Image(systemName: "photo")
+                    .font(.title3)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
             #if os(iOS)
             Button { toggleQuickStyle(.bold) } label: {
                 Image(systemName: "bold")
                     .font(.title3)
                     .foregroundStyle(quickTypingStyle.contains(.bold) ? Color.accentColor : .primary)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
             Button { toggleQuickStyle(.italic) } label: {
                 Image(systemName: "italic")
                     .font(.title3)
                     .foregroundStyle(quickTypingStyle.contains(.italic) ? Color.accentColor : .primary)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
             #endif
             Spacer()
