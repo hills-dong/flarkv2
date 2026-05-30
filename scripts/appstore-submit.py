@@ -26,19 +26,19 @@ import requests
 # ---- copy ----------------------------------------------------------------
 # Edit here, NOT in App Store Connect web UI, so the source of truth lives
 # with the code that ships the build.
-ZH_NOTES = """- 话题详情内嵌精简回复栏，发字 / 表情 / 图片不再需要打开完整编辑器
-- 多 Space 切换：左滑边缘呼出，启动时回到上次打开的 Space
-- iPad 三栏布局：Spaces / 话题 / 详情同框
-- 通过 flark:// 链接分享、接受 WebDAV Space 邀请
-- 同步进度内嵌顶部导航栏；下拉刷新更安静
-- 英文界面文案补全"""
+ZH_NOTES = """本次更新带来全新「AI 角色」：
+- 在话题里召唤 AI 角色参与讨论，回复以你的身份发出并标注角色名
+- 自由配置模型：支持 Gemini、Claude、xAI 及各种 OpenAI 兼容服务，使用你自己的 API Key
+- AI 能识别话题中的图片，也能按话题生成图片
+- 可从服务商一键拉取模型列表，并标注识图 / 生图支持
+- 修复与稳定性优化"""
 
-EN_NOTES = """- Inline reply composer in topic detail — type, drop emoji or photos without opening a sheet
-- Multi-space switching: edge-swipe to open, last space restored on launch
-- iPad three-column layout: Spaces / Topics / Detail
-- Share and accept WebDAV space invites via flark:// links
-- Sync progress lives in the nav bar; pull-to-refresh is now silent
-- English UI fully translated"""
+EN_NOTES = """This update introduces AI Personas:
+- Summon AI personas into a topic to join the conversation — replies post under your identity, labeled with the persona's name
+- Bring your own models: Gemini, Claude, xAI, and any OpenAI-compatible provider, with your own API key
+- AI can read images in a topic and generate images for it
+- Fetch a provider's model list and see which models support vision / image generation
+- Fixes and stability improvements"""
 
 # ---- env -----------------------------------------------------------------
 KEY_ID = os.environ["ASC_KEY_ID"]
