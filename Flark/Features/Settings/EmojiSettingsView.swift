@@ -8,7 +8,6 @@ import FlarkKit
 /// effect's discoverable entry point and stays on.
 struct EmojiSettingsView: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
 
     @AppStorage(AppSettingsKeys.emojiPack) private var emojiPack: String = EmojiPack.lark.rawValue
     @AppStorage(AppSettingsKeys.emojiFlightEnabled) private var flightEnabled: Bool = true
@@ -22,58 +21,51 @@ struct EmojiSettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    ForEach(EmojiPack.allCases) { pack in
-                        Button {
-                            emojiPack = pack.rawValue
-                        } label: {
-                            HStack {
-                                Text(pack.displayName)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                if emojiPack == pack.rawValue {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(.tint)
-                                }
+        Form {
+            Section {
+                ForEach(EmojiPack.allCases) { pack in
+                    Button {
+                        emojiPack = pack.rawValue
+                    } label: {
+                        HStack {
+                            Text(pack.displayName)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if emojiPack == pack.rawValue {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.tint)
                             }
                         }
-                        .buttonStyle(.plain)
                     }
-                } header: {
-                    Text("表情包")
-                } footer: {
-                    Text("切换全局表情图片样式。所有消息中的表情会立即换新。")
+                    .buttonStyle(.plain)
                 }
+            } header: {
+                Text("表情包")
+            } footer: {
+                Text("切换全局表情图片样式。所有消息中的表情会立即换新。")
+            }
 
-                if !previewItems.isEmpty {
-                    Section("预览") {
-                        HStack(spacing: 12) {
-                            ForEach(previewItems) { item in
-                                EmojiGlyph(item: item, size: 36)
-                            }
+            if !previewItems.isEmpty {
+                Section("预览") {
+                    HStack(spacing: 12) {
+                        ForEach(previewItems) { item in
+                            EmojiGlyph(item: item, size: 36)
                         }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 4)
                     }
-                }
-
-                Section {
-                    Toggle("启用表情飞行动效", isOn: $flightEnabled)
-                } footer: {
-                    Text("控制选表情飞入编辑器、表情反应飞入气泡的动画。关闭后选表情会即时落位；详情页右上角的彩蛋按钮不受影响。")
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 4)
                 }
             }
-            .navigationTitle("表情设置")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
-                }
+
+            Section {
+                Toggle("启用表情飞行动效", isOn: $flightEnabled)
+            } footer: {
+                Text("控制选表情飞入编辑器、表情反应飞入气泡的动画。关闭后选表情会即时落位；详情页右上角的彩蛋按钮不受影响。")
             }
         }
+        .navigationTitle("表情设置")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 }

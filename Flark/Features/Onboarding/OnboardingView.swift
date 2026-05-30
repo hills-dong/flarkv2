@@ -25,7 +25,16 @@ struct OnboardingView: View {
             }
         }
         .background(Color.platformGrouped.ignoresSafeArea())
-        .sheet(isPresented: $showImport) { IdentitySettingsView() }
+        .sheet(isPresented: $showImport) {
+            NavigationStack {
+                IdentityRecoveryView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { showImport = false }
+                        }
+                    }
+            }
+        }
     }
 
     private var compactLayout: some View {

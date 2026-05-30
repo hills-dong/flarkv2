@@ -1,10 +1,11 @@
 import Foundation
 
-/// One observable data-plane event for the in-app diagnostics page. Emitted
-/// from the storage backend (every HTTP / file call), the repository (every
-/// semantic append / rotate / blob op), and the sync engine (every poll
-/// round, 304 skip, fold). The UI subscribes and shows them newest-first so
-/// the user can audit exactly what the device is reading and writing.
+/// One observable diagnostics event for the in-app activity log. Emitted from
+/// the storage backend (every HTTP / file call), the repository (every
+/// semantic append / rotate / blob op), the sync engine (every poll round,
+/// 304 skip, fold), and the AI transports (request / response payloads). The
+/// UI subscribes and shows them newest-first so the user can audit exactly
+/// what the device is reading, writing, and sending to model providers.
 public struct LogEvent: Identifiable, Sendable, Hashable {
     public enum Level: String, Sendable, Hashable { case info, warn, error }
     public enum Category: String, Sendable, Hashable {
@@ -17,6 +18,9 @@ public struct LogEvent: Identifiable, Sendable, Hashable {
         /// SyncEngine round-level events: listing diff, fold, 304 skip,
         /// throttle/offline detection.
         case sync
+        /// AI transport events: request / response payloads for model calls
+        /// and model-list fetches.
+        case ai
     }
     public let id: UUID
     public let time: Date

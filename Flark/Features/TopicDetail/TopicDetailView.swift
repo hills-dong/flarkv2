@@ -28,6 +28,7 @@ struct TopicDetailView: View {
     #endif
     @FocusState private var quickFocused: Bool
     @State private var showQuickEmoji = false
+    @State private var showPersonaPicker = false
     @State private var quickPhoto: PhotosPickerItem?
     /// Reference holder for the autosave debounce so cancel / reassign
     /// doesn't churn observable state (same pattern as `ComposerView`).
@@ -110,19 +111,39 @@ struct TopicDetailView: View {
                     .padding(.horizontal, 24).padding(.top, 6).padding(.bottom, 4)
 
                 ForEach(replies) { reply in
+                    // AI-persona replies are authored by the user but carry a
+                    // hidden persona marker: render the persona's name + initial
+                    // avatar in the header, with a secondary note crediting the
+                    // real user who summoned it.
+                    let persona = PersonaTag.unwrap(reply.body.body)
+                    let bodyDoc = persona.map { ContentDocument(body: $0.content) } ?? reply.body
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .center, spacing: 10) {
-                            AvatarView(authorID: reply.authorID,
-                                       name: model.displayName(for: reply.authorID), size: 32)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(model.displayName(for: reply.authorID))
-                                    .font(.subheadline.weight(.semibold))
-                                timeLine(createdAt: reply.createdAt, editedAt: reply.editedAt)
-                                    .font(.caption).foregroundStyle(.secondary)
+                            if let persona {
+                                AvatarView(authorID: persona.name, name: persona.name, size: 32)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    HStack(spacing: 6) {
+                                        Text(persona.name)
+                                            .font(.subheadline.weight(.semibold))
+                                        Text("· 来自 \(model.displayName(for: reply.authorID))")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    timeLine(createdAt: reply.createdAt, editedAt: reply.editedAt)
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            } else {
+                                AvatarView(authorID: reply.authorID,
+                                           name: model.displayName(for: reply.authorID), size: 32)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(model.displayName(for: reply.authorID))
+                                        .font(.subheadline.weight(.semibold))
+                                    timeLine(createdAt: reply.createdAt, editedAt: reply.editedAt)
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
                             }
                             Spacer()
                         }
-                        ContentDocumentView(doc: reply.body, emojiFlyInSpace: flyInSpace)
+                        ContentDocumentView(doc: bodyDoc, emojiFlyInSpace: flyInSpace)
                             .padding(.leading, 42)
                         ReactionBar(targetID: reply.id, targetType: .reply,
                                     emojiFlyInSpace: flyInSpace)
@@ -206,13 +227,34 @@ struct TopicDetailView: View {
         .sheet(isPresented: $replying) {
             ComposerView(mode: .newReply(topicID: topicID))
         }
+        .sheet(isPresented: $showPersonaPicker) {
+            PersonaPickerSheet { persona, guidance in
+                showPersonaPicker = false
+                Task {
+                    await model.summonPersona(persona, inTopic: topicID, guidance: guidance)
+                    scrollToBottomNonce &+= 1
+                }
+            }
+        }
+        .alert("AI 回复失败", isPresented: Binding(
+            get: { model.aiError != nil },
+            set: { if !$0 { model.aiError = nil } }
+        )) {
+            Button("好") { model.aiError = nil }
+        } message: {
+            Text(model.aiError ?? "")
+        }
         .sheet(isPresented: $editingTopic) {
             if let t = model.projection.topics[topicID] {
                 ComposerView(mode: .editTopic(topicID: topicID, body: t.body))
             }
         }
         .sheet(item: $editingReply) { target in
-            ComposerView(mode: .editReply(replyID: target.id, body: target.body))
+            // Strip the hidden persona marker so the editor shows only the
+            // human-readable content; `editReply` re-applies it on save.
+            let editable = PersonaTag.unwrap(target.body.body)
+                .map { ContentDocument(body: $0.content) } ?? target.body
+            ComposerView(mode: .editReply(replyID: target.id, body: editable))
         }
         .task(id: topicID) {
             loadQuickDraftFromStore()
@@ -375,6 +417,22 @@ struct TopicDetailView: View {
                     .contentShape(Rectangle())
             }
             #endif
+            Button {
+                quickFocused = false
+                showPersonaPicker = true
+            } label: {
+                Group {
+                    if model.aiGenerating {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "wand.and.stars").font(.title3)
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .contentShape(Rectangle())
+            }
+            .disabled(model.aiGenerating)
+            .help("召唤 AI 角色回复")
             Spacer()
             #if !os(macOS)
             Button {

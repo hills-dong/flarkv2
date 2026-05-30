@@ -69,6 +69,9 @@ final class AppModel {
     // MARK: - Bootstrap
 
     func bootstrap() {
+        // Restore iCloud-synced settings into UserDefaults before any view or
+        // helper reads them, then keep mirroring local changes up.
+        SettingsSync.start()
         migrateLegacyIfNeeded()
         accounts = AccountStore.accounts()
 
@@ -164,6 +167,33 @@ final class AppModel {
         rebindEmojiUsage(to: id)
         stage = .noSpace
         replayDeferredInviteIfAny()
+    }
+
+    /// Rename the active identity locally and, when a Space is open, update
+    /// that Space's profile file so the new name is visible immediately.
+    @discardableResult
+    func updateDisplayName(_ rawName: String) async -> Bool {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let identity,
+              let accountID = currentAccountID else { return false }
+        guard trimmed != displayName else { return true }
+
+        displayName = trimmed
+        Keychain.setString(trimmed, account: AccountStore.nameAccount(accountID), sync: true)
+        AccountStore.upsert(id: accountID, name: trimmed)
+        if let i = accounts.firstIndex(where: { $0.id == accountID }) {
+            accounts[i].name = trimmed
+        } else {
+            accounts = AccountStore.accounts()
+        }
+
+        let avatarBlobID = projection.profiles[identity.authorID]?.avatarBlobID
+        await engine?.setLocalProfile(authorID: identity.authorID,
+                                      displayName: trimmed,
+                                      avatarBlobID: avatarBlobID)
+        try? await repo?.writeProfile(displayName: trimmed, avatarBlobID: avatarBlobID)
+        return true
     }
 
     /// Switch to another local account (data preserved for all accounts).
@@ -337,9 +367,10 @@ final class AppModel {
         self.stage = .ready
         try? await repo.bootstrap(spaceName: cfg.name)
         if !displayName.isEmpty {                       // never clobber with empty
-            try? await repo.writeProfile(displayName: displayName, avatarBlobID: nil)
+            let avatarBlobID = self.projection.profiles[identity.authorID]?.avatarBlobID
+            try? await repo.writeProfile(displayName: displayName, avatarBlobID: avatarBlobID)
             await engine.setLocalProfile(authorID: identity.authorID,
-                                         displayName: displayName, avatarBlobID: nil)
+                                         displayName: displayName, avatarBlobID: avatarBlobID)
         }
         // Windowed: newest files first so a new member isn't blocked on the
         // whole log. After this opening pull, the engine is idle — fresh
@@ -499,12 +530,278 @@ final class AppModel {
     }
 
     func editReply(_ replyID: String, body: ContentDocument) {
-        emit(.replyEdit(replyID: replyID, body: body))
+        // Preserve the hidden persona label across edits. The composer edits
+        // only the visible content (the marker is stripped before editing), so
+        // when the original reply was a summon, re-wrap with the same name.
+        var newBody = body
+        if let existing = projection.replies[replyID],
+           let persona = PersonaTag.unwrap(existing.body.body) {
+            newBody = ContentDocument(body: PersonaTag.wrap(name: persona.name, content: body.body))
+        }
+        emit(.replyEdit(replyID: replyID, body: newBody))
     }
 
     func toggleReaction(targetID: String, type: TargetType, emojiID: String) {
         let active = projection.hasReacted(author: authorID, target: targetID, emoji: emojiID)
         emit(.reactionSet(targetID: targetID, targetType: type, emojiID: emojiID, removed: active))
+    }
+
+    // MARK: - AI personas
+
+    /// True while a Gemini request is in flight — drives the summon button's
+    /// spinner so the user can't fire a second request mid-generation.
+    var aiGenerating = false
+    /// Last AI failure, surfaced as an alert in the topic detail view.
+    var aiError: String?
+
+    /// Summon `persona` to reply in `topicID`: flatten the topic + its replies
+    /// into a prompt, call the persona's selected model (Gemini or any
+    /// OpenAI-compatible provider via `LLMRunner`), and post the response as a
+    /// normal reply under the current user's identity, labelled with the
+    /// persona's name. Posting as the user needs no synthetic author identity
+    /// and no change to the signing path.
+    func summonPersona(_ persona: Persona, inTopic topicID: String, guidance: String = "") async {
+        guard !aiGenerating else { return }
+        guard let option = AIConfig.modelOption(for: persona),
+              !option.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            aiError = String(localized: "请先在「AI 角色」设置里配置一个带 API Key 的模型。")
+            return
+        }
+        guard let topic = projection.topics[topicID] else { return }
+
+        aiGenerating = true
+        aiError = nil
+        defer { aiGenerating = false }
+
+        // Let the persona "see" pictures already in the thread (most recent
+        // few), loaded as compact thumbnails so the request stays small. The
+        // runner attaches them as vision input where the transport supports it.
+        var inputImages: [Data] = []
+        for id in recentImageBlobIDs(topicID: topicID, topic: topic) {
+            if let data = await loadThumbnail(id, maxEdge: 1024) { inputImages.append(data) }
+        }
+
+        // Image-generation models get a picture-oriented prompt; chat models get
+        // the usual conversational one. The runner picks the route from the
+        // model id (`generatesImages`).
+        let prompt = option.generatesImages
+            ? buildImagePrompt(topicID: topicID, topic: topic, guidance: guidance)
+            : buildConversationPrompt(topicID: topicID, topic: topic, guidance: guidance)
+        do {
+            let result = try await LLMRunner.generate(
+                option: option, systemPrompt: persona.systemPrompt,
+                userPrompt: prompt, inputImages: inputImages)
+
+            // Upload any generated images into the (content-addressed) blob
+            // store so they can be embedded in the reply body like any photo.
+            var blobIDs: [String] = []
+            for image in result.images {
+                if let uploaded = await uploadImage(image) { blobIDs.append(uploaded.id) }
+            }
+            guard !result.text.isEmpty || !blobIDs.isEmpty else {
+                aiError = String(localized: "模型没有返回任何内容。")
+                return
+            }
+            createReply(topicID: topicID,
+                        body: personaReplyBody(persona: persona, text: result.text, imageBlobIDs: blobIDs))
+        } catch {
+            aiError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    /// The most recent image blobs referenced in a topic + its replies (capped),
+    /// newest last. Fed to the model as vision input so a summoned persona can
+    /// react to pictures in the thread.
+    private func recentImageBlobIDs(topicID: String, topic: TopicState, limit: Int = 4) -> [String] {
+        var ids = topic.body.blobIDs
+        for reply in projection.replies(forTopic: topicID) {
+            ids.append(contentsOf: reply.body.blobIDs)
+        }
+        var seen = Set<String>()
+        var unique: [String] = []
+        for id in ids where seen.insert(id).inserted { unique.append(id) }
+        return Array(unique.suffix(limit))
+    }
+
+    /// Picture-oriented prompt for image-generation models. Leads with an
+    /// explicit image directive (and the user's guidance, which becomes the
+    /// subject) so the model treats picture-making — not continuing the
+    /// conversation — as the task; the thread follows only as light context.
+    /// The persona's system prompt carries the style. Skips the emoji/markdown
+    /// format guide (irrelevant for an image). The surrounding instructions use
+    /// the app's language rather than the device locale.
+    private func buildImagePrompt(topicID: String, topic: TopicState, guidance: String = "") -> String {
+        let zh = appPrefersChinese
+        let trimmedGuidance = guidance.trimmingCharacters(in: .whitespacesAndNewlines)
+        var lines: [String] = []
+
+        lines.append(zh
+            ? "如果你可以同时生成文字和图片：除非用户明确要求生成图片，或当前场景特别适合用图片回复，否则请优先直接给出简洁的文字回复，不要生成图片。"
+            : "If you can produce both text and images, prefer a concise text reply and do not generate an image unless the user explicitly asks for one or the situation is especially well suited to an image reply.")
+
+        if !trimmedGuidance.isEmpty {
+            lines.append(zh
+                ? "如果你判断这次确实应该生成图片，请围绕以下方向来画：\(trimmedGuidance)"
+                : "If you decide an image really is the right reply this time, generate it around this direction: \(trimmedGuidance)")
+        } else {
+            lines.append(zh
+                ? "如果你判断这次确实应该生成图片，请生成一张与下面话题相关的图片。"
+                : "If you decide an image really is the right reply this time, generate one that fits the topic below.")
+        }
+
+        let author = displayName(for: topic.authorID)
+        lines.append(zh ? "\n（参考上下文）话题由「\(author)」发起：" : "\n(Context) Topic started by \"\(author)\":")
+        lines.append(topic.body.plainText(catalog: emoji))
+
+        let replies = projection.replies(forTopic: topicID)
+        if !replies.isEmpty {
+            lines.append(zh ? "讨论：" : "Discussion:")
+            for reply in replies.suffix(8) {
+                let who = displayName(for: reply.authorID)
+                lines.append("\(who)\(zh ? "：" : ": ")\(reply.body.plainText(catalog: emoji))")
+            }
+        }
+
+        lines.append(zh
+            ? "\n如果你决定生成图片，请直接输出图片；否则只输出文字回复。"
+            : "\nIf you decide to generate an image, output the image directly; otherwise output only a text reply.")
+        return lines.joined(separator: "\n")
+    }
+
+    /// Flatten the topic + its replies into a plain-text transcript the model
+    /// can reason over. Caps the reply tail so a long thread can't blow up the
+    /// prompt. The reply language is left to the model: the prompt states the
+    /// priority (this turn's guidance → persona → the thread's language → app
+    /// language) and the model picks, rather than us pre-detecting it.
+    private func buildConversationPrompt(topicID: String, topic: TopicState, guidance: String = "") -> String {
+        let zh = appPrefersChinese
+        let appLanguage = zh ? "中文" : "English"
+        var lines: [String] = []
+
+        let author = displayName(for: topic.authorID)
+        lines.append(zh ? "话题由「\(author)」发起：" : "Topic started by \"\(author)\":")
+        lines.append(topic.body.plainText(catalog: emoji))
+
+        let replies = projection.replies(forTopic: topicID)
+        if !replies.isEmpty {
+            lines.append(zh ? "\n已有的讨论（按时间顺序）：" : "\nDiscussion so far (in order):")
+            for reply in replies.suffix(20) {
+                let who = displayName(for: reply.authorID)
+                lines.append("\(who)\(zh ? "：" : ": ")\(reply.body.plainText(catalog: emoji))")
+            }
+        }
+
+        lines.append(zh
+            ? "\n请以你的角色身份，针对上面的话题和讨论，给出一条简洁、有观点的回复。直接说你的看法，不要复述题目，也不要在开头加「角色名：」之类的前缀。"
+            : "\nReplying in character, give one concise, opinionated response to the topic and discussion above. State your view directly; don't restate the prompt and don't prefix your reply with a name like \"Name:\".")
+        lines.append(zh
+            ? "回复语言请自行判断，按以下优先级：① 若本次额外指示指定了语言，用它；② 否则若你的角色设定指定了语言，用它；③ 否则使用上面话题和讨论的主要语言；④ 实在无法判断（例如只有图片、几乎没有文字）时，用本应用的界面语言（\(appLanguage)）回复。不要因为这些说明本身是用中文写的，就改变你的回复语言。"
+            : "Decide your reply language yourself, by this priority: (1) if this turn's extra guidance names a language, use it; (2) otherwise if your persona specifies a language, use it; (3) otherwise reply in the dominant language of the topic and discussion above; (4) only when none can be determined (e.g. image-only, almost no text), reply in this app's UI language (\(appLanguage)). Don't let the language these instructions happen to be written in change your reply language.")
+        lines.append(zh
+            ? "如果你可以同时生成文字和图片：除非用户明确要求生成图片，或当前场景特别适合用图片回复，否则只回复文字，不要生成图片。"
+            : "If you can produce both text and images, reply with text only unless the user explicitly asks for an image or the situation is especially well suited to an image reply.")
+
+        lines.append(replyFormatGuide(chinese: zh))
+
+        let trimmedGuidance = guidance.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedGuidance.isEmpty {
+            lines.append(zh
+                ? "本次回复请特别按照以下方向来写（在不脱离角色设定的前提下优先遵循）：\(trimmedGuidance)"
+                : "For this reply, prioritize the following direction (without breaking character): \(trimmedGuidance)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// App-selected UI language (respects per-app language overrides), falling
+    /// back to the user's language list when the bundle can't resolve one.
+    private var appLanguageCode: String {
+        if let preferred = Bundle.main.preferredLocalizations.first(where: { $0 != "Base" }),
+           !preferred.isEmpty {
+            return preferred
+        }
+        return Locale.preferredLanguages.first ?? (Locale.current.language.languageCode?.identifier ?? "en")
+    }
+
+    /// True when the app itself is running in Chinese — used for prompt
+    /// scaffolding and fallback behavior.
+    private var appPrefersChinese: Bool {
+        primaryLanguageCode(from: appLanguageCode) == "zh"
+    }
+
+    /// Normalizes a raw language code to the form used by the app-language
+    /// fallback (collapsing the various zh-* variants).
+    private func primaryLanguageCode(from rawCode: String) -> String {
+        normalizedLanguageCode(rawCode).split(separator: "-").first.map(String.init) ?? "en"
+    }
+
+    private func normalizedLanguageCode(_ rawCode: String) -> String {
+        let code = rawCode.replacingOccurrences(of: "_", with: "-")
+        let lower = code.lowercased()
+        switch lower {
+        case "zh-cn", "zh-sg", "zh-hans":
+            return "zh-Hans"
+        case "zh-tw", "zh-hk", "zh-mo", "zh-hant":
+            return "zh-Hant"
+        default:
+            return code
+        }
+    }
+
+    /// Tells the model which formatting markers our renderer understands and
+    /// which emoji it may reach for. Mirrors `MarkdownCodec`'s grammar — images
+    /// are deliberately omitted (the model has no blob ids to reference). The
+    /// emoji list is the head of the catalog (ordered classics-first), capped to
+    /// ~24 so the prompt stays lean rather than dumping all 178 stickers.
+    private func replyFormatGuide(chinese: Bool) -> String {
+        let tokens = Array(emojiPromptTokens(limit: 24))
+        let example = tokens.first ?? "[赞]"
+        if chinese {
+            var s = "\n回复支持有限的格式标记，可按需适度使用（非必须）：\n"
+            s += "- 粗体：**像这样**\n"
+            s += "- 斜体：*像这样*\n"
+            s += "- 粗斜体：***像这样***\n"
+            s += "- 链接：[显示文字](https://example.com)\n"
+            s += "- 表情：直接写出下面列表里的方括号标记，例如 \(example)\n"
+            s += "标题、列表、代码块、图片等其它格式不支持（写了也会原样显示，不会生效）。"
+            if !tokens.isEmpty {
+                s += "\n可用表情（按需挑选，别硬凑）：\(tokens.joined(separator: " "))"
+            }
+            return s
+        }
+        var s = "\nReplies support a few formatting markers — use them sparingly when they help (optional):\n"
+        s += "- Bold: **like this**\n"
+        s += "- Italic: *like this*\n"
+        s += "- Bold italic: ***like this***\n"
+        s += "- Link: [shown text](https://example.com)\n"
+        s += "- Emoji: write one of the bracket tokens from the list below, e.g. \(example)\n"
+        s += "Headings, lists, code blocks, images and other markdown are NOT supported (they render literally)."
+        if !tokens.isEmpty {
+            s += "\nAvailable emoji (pick only what fits, don't force them): \(tokens.joined(separator: " "))"
+        }
+        return s
+    }
+
+    /// The classic emoji set we surface to the model, as the exact `[token]`
+    /// the body parser resolves (same form the model already sees in context).
+    private func emojiPromptTokens(limit: Int) -> [String] {
+        emoji.items.prefix(limit).map(\.placeholder)
+    }
+
+    /// Build the reply body: the model's text prefixed with a hidden persona
+    /// marker (see `PersonaTag`) so the reply renders with the persona's name +
+    /// initial avatar in the header. The model output is treated as a markdown
+    /// body (not escaped) so the bold/italic/link/emoji markers it was told it
+    /// can use in `replyFormatGuide` actually render. Our parser degrades
+    /// gracefully on anything outside that grammar — unmatched markers fall back
+    /// to literal text rather than breaking the layout.
+    private func personaReplyBody(persona: Persona, text: String,
+                                  imageBlobIDs: [String] = []) -> ContentDocument {
+        var body = text
+        for id in imageBlobIDs {
+            if !body.isEmpty { body += "\n" }
+            body += "![](blob://\(id))"
+        }
+        return ContentDocument(body: PersonaTag.wrap(name: persona.name, content: body))
     }
 
     // MARK: - Emoji usage (drives `最常使用`)

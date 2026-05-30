@@ -1,11 +1,10 @@
 import SwiftUI
 import FlarkKit
 
-/// In-app diagnostics log. Subscribes to `FlarkLog` and renders every data
-/// operation the device performs — backend HTTP / file calls, repository
-/// appends and rotations, sync rounds and 304 skips — newest first, with
-/// filters for category and severity so you can audit the WebDAV traffic
-/// without leaving the app.
+/// In-app diagnostics log. Subscribes to `FlarkLog` and renders every storage,
+/// sync, repository, and AI transport event newest-first, with filters for
+/// category and severity so you can audit both data movement and model
+/// requests without leaving the app.
 struct LogView: View {
     @State private var events: [LogEvent] = []
     @State private var subscriptionID: UUID?
@@ -57,6 +56,7 @@ struct LogView: View {
                             Text("存储 (storage)").tag(Optional(LogEvent.Category.storage))
                             Text("仓库 (repo)").tag(Optional(LogEvent.Category.repo))
                             Text("同步 (sync)").tag(Optional(LogEvent.Category.sync))
+                            Text("AI").tag(Optional(LogEvent.Category.ai))
                         }
                     }
                     Section("级别") {
@@ -137,7 +137,9 @@ private struct LogRow: View {
             }
             if let detail = event.detail, !detail.isEmpty {
                 Text(detail)
-                    .font(.caption)
+                    .font(event.category == .ai
+                        ? .system(.caption, design: .monospaced)
+                        : .caption)
                     .foregroundStyle(expanded ? .primary : .secondary)
                     .lineLimit(expanded ? nil : 1)
             }
